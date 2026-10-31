@@ -19,7 +19,7 @@ node servidor.js
 | Girar a fondo | La tabla sigue dando la vuelta y volvés hacia atrás |
 | Separar los dedos | Inclina la tabla hacia adelante y acelera |
 | Juntar los dedos | Inclina la tabla hacia atrás y frena |
-| Subir y bajar por la ola | Gana velocidad |
+| Bajar de la ola | Da velocidad, y más cuanto más alto arrancás |
 
 En la PC: ← → dirección, A y D cola, ↑ acelerar, ↓ frenar, P pausa.
 
