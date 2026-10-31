@@ -1,6 +1,6 @@
-// Sirve tubazo.html en la PC y en la red local, para abrirlo desde el celular.
+// Sirve index.html en la PC y en la red local, para abrirlo desde el celular.
 const http = require('http'), fs = require('fs'), path = require('path'), os = require('os');
-const port = process.env.PORT || 8123, file = path.join(__dirname, 'tubazo.html');
+const port = process.env.PORT || 8123, file = path.join(__dirname, 'index.html');
 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });

@@ -4,7 +4,7 @@ Juego de surf en primera persona para celular y PC. Ves la tabla y tus pies, y m
 
 ## Cómo jugar
 
-Abrí `tubazo.html` en el navegador. Para probarlo en el celular, corré el servidor y entrá a la dirección que muestra, con el teléfono en la misma wifi que la PC:
+Jugalo en https://matiasmoranc.github.io/tubazo/ o abrí `index.html` en el navegador. Para probarlo en el celular, corré el servidor y entrá a la dirección que muestra, con el teléfono en la misma wifi que la PC:
 
 ```bash
 node servidor.js
@@ -29,6 +29,6 @@ Cutback, rebote en la espuma, snap, floater, tubo, aéreos y giros en el aire de
 
 ## Archivos
 
-- `tubazo.html`: el juego en primera persona.
+- `index.html`: el juego en primera persona.
 - `tubazo-lateral.html`: la primera versión, vista de costado.
 - `servidor.js`: servidor local para abrirlo desde el celular.
