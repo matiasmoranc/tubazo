@@ -54,7 +54,7 @@ small{display:block;margin-top:10px;font-weight:600;opacity:.9}
       <b>DEDO DE ATRÁS</b><span>arrastrá la cola para el otro lado y doblás mucho más cerrado, aunque frenás</span>
       <b>SEPARAR LOS DEDOS</b><span>la tabla se inclina hacia adelante y acelerás. Cuanto más los separás, más acelera</span>
       <b>JUNTAR LOS DEDOS</b><span>la tabla se inclina hacia atrás y frenás, para que la ola te meta en el tubo</span>
-      <b>BAJAR DE LA OLA</b><span>la velocidad sale de bajar: cuanto más alto zigzagueás, más ganás. Con mucha, volás</span>
+      <b>BAJAR DE LA OLA</b><span>la velocidad sale de bajar: cuanto más alto zigzagueás, más ganás. Con mucha podés saltar</span>
       <b>GIRÁ A FONDO</b><span>la tabla sigue dando la vuelta y volvés hacia atrás. Si chocás la espuma, rebotás</span>
       <b>EN EL AIRE</b><span>centrá los dedos y volvé a moverlos para girar 360. Centralos antes de caer</span>
     </div>
@@ -191,7 +191,7 @@ const T={
   pivotSteer:.7, pivotRate:2.4, pivotDrag:150,  // arrastrar la cola: dobla más, más rápido y frena
   gasFront:80, brakeBack:260, // tabla inclinada adelante o atrás
   faceY:.74, pocketPull:125, pocketDist:215, pumpBoost:45,
-  launchAng:-.3, jumpMin:1.06, jumpFull:230, popAir:1.1, popKick:135, gravAir:640,
+  launchAng:-.3, jumpMin:1.06, jumpFull:230, popKick:135, gravAir:860, jumpHold:.3, jumpIntent:.45,
   spin:11, spinOn:.3, spinArm:.25,
   landPerfect:.42, landOk:1.05,
   curl0:285, curlMax:430, curlGrow:.00085,
@@ -220,7 +220,7 @@ function aMax(z,curlZ){
 function facePoint(x,y,out){
   const z=x/ZS,H=waveH(x),r=H/42*taper(z-G.curlX/ZS),am=aMax(z,G.curlX/ZS),ar=Math.min(am,1.35);
   const f=clamp((BASE-y)/H,0,1),a=f*ar;
-  out.a=a;out.x=r*Math.sin(a);out.y=r*(1-Math.cos(a))+Math.max(0,lipY(x)-y)/42*1.4;out.z=z;
+  out.a=a;out.x=r*Math.sin(a);out.y=r*(1-Math.cos(a))+Math.max(0,lipY(x)-y)/42*1.1;out.z=z;
   return out;
 }
 
@@ -235,7 +235,7 @@ const input={keys:new Set(),touch:false,bot:null,front:0,pivot:0,steer:0,avg:0};
 
 function resetRun(){
   s={x:0,y:BASE-110,th:.25,v:360,air:false,vx:0,vy:0,spinA:0,spinV:0,total:0,airT:0,pumpCD:0,kelp:0,prevTh:.25,
-     hops:0,armed:false,v0:0,off:0,crash:0,crashR:0,w:0,lean:0,viewTh:.25,rebound:0,backed:false,lipT:0,cutT:0};
+     hops:0,armed:false,v0:0,off:0,crash:0,crashR:0,w:0,lean:0,viewTh:.25,rebound:0,backed:false,lipT:0,cutT:0,jumpHold:0};
   G.curlX=-300;G.vc=T.curl0;G.score=0;G.combo=0;G.comboT=0;G.tube=0;G.inTube=false;G.mult=1;G.ts=1;G.shake=0;G.flash=0;
   G.bestTube=0;G.bestTrick=null;G.bestTrickPts=0;G.nextSpawn=1100;G.hintT=0;
   G.stats={launches:0,perfects:0,oks:0,pumps:0};
@@ -269,7 +269,7 @@ function spawn(){
   }else if(r<.8){
     const n=5;
     for(let i=0;i<n;i++){const x=x0+40+i*62,u=i/(n-1);
-      objs.push({k:'shell',x,y:lipY(x)-30-100*(4*u*(1-u)),r:32,gold:true})}
+      objs.push({k:'shell',x,y:lipY(x)-12-42*(4*u*(1-u)),r:32,gold:true})}
     len=320;
   }else{
     const l=lipY(x0),w=rnd(130,220);
@@ -337,7 +337,7 @@ function stepFace(dt,demo){
   const kv=clamp(s.v/330,.75,1.2),boost=1+T.pivotRate*piv*.45;
   const keep=1-sstep(.85,1,Math.abs(st));                        // giro chico: mantenés el rumbo. A fondo: la tabla sigue dando la vuelta
   const wMax=4.6*boost;
-  let wT=clamp(-st*T.carveRate*boost*kv,-wMax,wMax)+keep*clamp(T.carveBack*wrap(T.angIdle-s.th),-3.2,3.2);
+  let wT=clamp(-st*T.carveRate*boost*kv,-wMax,wMax)+keep*clamp(T.carveBack*wrap(T.angIdle-s.th),-5.2,5.2);
   if(s.rebound>0){s.rebound-=dt;wT=(wrap(s.th)>0?-1:1)*7.5;s.x+=G.vc*dt}      // la espuma te devuelve hacia adelante
   s.w+=(wT-s.w)*Math.min(1,T.carveResp*dt);
   s.th=wrap(s.th+s.w*dt);
@@ -370,10 +370,18 @@ function stepFace(dt,demo){
   }
   if(s.y>BASE+12)s.y=BASE+12;
   if(s.y<l+8){
-    if(Math.sin(s.th)<T.launchAng&&s.v>=G.vc*T.jumpMin&&(d>T.tube||s.v>G.vc+50)){launch();return}     // en el tubo solo salís si traés velocidad para romper el labio
+    const pushing=Math.sin(s.th)<T.launchAng,intent=pushing&&(c>=0?st>T.jumpIntent:st<-T.jumpIntent);
+    const can=s.v>=G.vc*T.jumpMin&&(d>T.tube||s.v>G.vc+50);       // en el tubo solo salís si traés velocidad para romper el labio
     s.y=l+8;s.lipT+=dt;s.v-=70*dt;
-    if(Math.sin(s.th)<T.launchAng)s.th=c>=0?.05:wrap(Math.PI-.05);          // sin saltar, el labio te devuelve
-  }else if(s.lipT>0){if(s.lipT>.55)trick('Floater',260);s.lipT=0}
+    if(intent&&can){                                              // sostenés la punta contra el borde: recién ahí despegás
+      s.jumpHold+=dt;s.w=0;s.th=c>=0?Math.max(s.th,-1.15):Math.min(s.th,-1.99);
+      if(Math.random()<.5)burst(2,.5,.62,0);
+      if(s.jumpHold>=T.jumpHold){s.jumpHold=0;launch();return}
+    }else{
+      s.jumpHold=0;
+      if(pushing){const tg=c>=0?.12:wrap(Math.PI-.12);s.th=wrap(s.th+wrap(tg-s.th)*Math.min(1,9*dt));s.w*=.8}   // si no insistís, el borde te devuelve
+    }
+  }else{s.jumpHold=0;if(s.lipT>0){if(s.lipT>.55)trick('Floater',260);s.lipT=0}}
   const ath=Math.abs(s.th);
   if(ath>2.1)s.backed=true;else if(s.backed&&ath<.7){s.backed=false;if(G.t>s.cutT){s.cutT=G.t+1.8;trick('Cutback',450)}}
   if(!demo&&c<0&&d<62&&s.rebound<=0){                            // chocás la espuma y rebotás, como en el agua
@@ -407,7 +415,7 @@ function launch(){
   const c=Math.cos(s.th);
   s.vx=c>=0?Math.max(G.vc*(s.hops>1?.6:.86),s.v*(.62+.38*c)):Math.max(-130,s.v*(.5+1.3*c));
   const pw=clamp((s.v-G.vc*T.jumpMin)/T.jumpFull,0,1);         // poca velocidad: saltito; mucha: vuelo
-  s.vy=s.v*Math.sin(s.th)*(.55+.55*pw)-T.popKick*(.15+.85*pw)*Math.min(1,-Math.sin(s.th)/.65);
+  s.vy=s.v*Math.sin(s.th)*(.38+.32*pw)-T.popKick*(.16+.6*pw)*Math.min(1,-Math.sin(s.th)/.65);
   s.spinA=0;s.spinV=0;s.total=0;s.airT=0;s.armed=false;G.stats.launches++;
   burst(26,.5,.7,0);sfxWhoosh()
 }
@@ -583,12 +591,15 @@ function drawObjs(t){
 }
 function drawFoot(x,y,sc,rot,lifted){
   ctx.save();ctx.translate(x,y);ctx.rotate(rot);ctx.scale(sc,sc);
-  ctx.globalAlpha=lifted?.55:1;
-  ctx.fillStyle='#c98a5d';
-  ctx.beginPath();ctx.moveTo(-19,60);ctx.bezierCurveTo(-27,18,-24,-22,-3,-30);ctx.bezierCurveTo(22,-31,26,6,19,30);ctx.quadraticCurveTo(15,56,13,62);ctx.closePath();ctx.fill();
-  const toes=[[-14,-29,6],[-4,-40,6.4],[6,-39,5.8],[14,-33,5.2],[20,-24,4.6]];
-  for(const q of toes){ctx.beginPath();ctx.arc(q[0],q[1],q[2],0,7);ctx.fill()}
-  ctx.fillStyle='rgba(16,52,63,.14)';ctx.beginPath();ctx.ellipse(-9,20,6,20,.1,0,7);ctx.fill();
+  ctx.globalAlpha=lifted?.6:1;
+  ctx.fillStyle='rgba(30,40,40,.3)';ctx.beginPath();ctx.ellipse(3,14,24,44,0,0,7);ctx.fill();        // sombra sobre la tabla
+  const g=ctx.createLinearGradient(-24,0,24,0);g.addColorStop(0,'#8f5f3f');g.addColorStop(.45,'#c58f68');g.addColorStop(1,'#a87350');
+  ctx.fillStyle=g;
+  ctx.beginPath();ctx.moveTo(-15,58);ctx.bezierCurveTo(-21,26,-23,-8,-13,-25);ctx.bezierCurveTo(-3,-34,17,-31,19,-16);ctx.bezierCurveTo(21,0,18,24,14,58);ctx.quadraticCurveTo(0,66,-15,58);ctx.closePath();ctx.fill();
+  const toes=[[-14,-29,6.6,8],[-3.5,-37,5,6.6],[5,-37,4.5,5.8],[12.5,-33,4,5.2],[18.5,-26,3.6,4.6]];
+  for(const q of toes){ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(q[0],q[1],q[2],q[3],0,0,7);ctx.fill();
+    ctx.fillStyle='rgba(245,225,210,.65)';ctx.beginPath();ctx.ellipse(q[0],q[1]-q[3]*.45,q[2]*.55,q[3]*.35,0,0,7);ctx.fill()}
+  ctx.fillStyle='rgba(255,240,225,.14)';ctx.beginPath();ctx.ellipse(-4,8,6,32,.05,0,7);ctx.fill();
   ctx.restore();ctx.globalAlpha=1;
 }
 const footVis={F:{x:null,y:0},B:{x:null,y:0}};
@@ -605,14 +616,28 @@ function drawBoard(t){
   let dx=pF.x-pB.x,dy=pF.y-pB.y,len=Math.hypot(dx,dy)||1;
   const ang=clamp(Math.atan2(dx,-dy),-1.1,1.1)+(s.air?0:s.lean*.05);
   len=Math.max(len,H*.12);
-  const n=len+H*.075-(s.air?0:Math.sin(s.th)*H*.02)-gas*H*.03+brake*H*.2,tl=H*.7,hw=u*.24,side=s.lean>0?1:-1;
+  const n=len+H*.075-(s.air?0:Math.sin(s.th)*H*.02)-gas*H*.03+brake*H*.2,tl=H*.7,hw=u*.2,side=s.lean>0?1:-1;
   ctx.save();ctx.translate(pB.x,pB.y);ctx.rotate(ang);
-  const shape=(sh,col)=>{ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(0,-n);
-    ctx.bezierCurveTo(-hw*.6-sh,-n*.72,-hw-sh,-n*.18,-hw*1.02-sh,tl*.25);ctx.lineTo(-hw*.8,tl);ctx.lineTo(hw*.8,tl);ctx.lineTo(hw*1.02+sh,tl*.25);
-    ctx.bezierCurveTo(hw+sh,-n*.18,hw*.6+sh,-n*.72,0,-n);ctx.closePath();ctx.fill()};
-  ctx.save();ctx.translate(-side*Math.abs(s.lean)*u*.016,3);shape(0,'#d99a2b');ctx.restore();   // canto que se levanta
-  shape(0,'#ffc94d');
-  ctx.fillStyle='#ff6b4a';ctx.beginPath();ctx.moveTo(0,-n+H*.03);ctx.lineTo(-hw*.09,tl);ctx.lineTo(hw*.09,tl);ctx.closePath();ctx.fill();
+  const outline=()=>{ctx.beginPath();ctx.moveTo(0,-n);
+    ctx.bezierCurveTo(-hw*.36,-n*.82,-hw*.86,-n*.34,-hw,tl*.08);ctx.bezierCurveTo(-hw*1.02,tl*.4,-hw*.8,tl*.8,-hw*.6,tl);ctx.lineTo(hw*.6,tl);
+    ctx.bezierCurveTo(hw*.8,tl*.8,hw*1.02,tl*.4,hw,tl*.08);ctx.bezierCurveTo(hw*.86,-n*.34,hw*.36,-n*.82,0,-n);ctx.closePath()};
+  ctx.save();ctx.translate(-side*Math.abs(s.lean)*u*.014,4);outline();ctx.fillStyle='#55686c';ctx.fill();ctx.restore();   // canto que se levanta
+  const deck=ctx.createLinearGradient(-hw,0,hw,0);
+  [[0,'#b8bfba'],[.1,'#ece8dd'],[.5,'#fbf8f0'],[.9,'#e8e3d7'],[1,'#adb5b1']].forEach(c=>deck.addColorStop(c[0],c[1]));
+  outline();ctx.fillStyle=deck;ctx.fill();
+  ctx.save();outline();ctx.clip();
+  ctx.strokeStyle='rgba(18,105,118,.65)';ctx.lineWidth=Math.max(1.5,u*.005);                    // línea de color cerca del canto
+  ctx.save();ctx.scale(.88,.97);outline();ctx.stroke();ctx.restore();
+  ctx.strokeStyle='rgba(135,92,52,.8)';ctx.lineWidth=Math.max(1,u*.003);ctx.beginPath();ctx.moveTo(0,-n);ctx.lineTo(0,tl);ctx.stroke();   // alma de madera
+  const pw=hw*.74,py=-len*.28;                                                                  // goma antideslizante de la cola
+  ctx.fillStyle='#23292d';ctx.fillRect(-pw,py,pw*2,tl);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;for(let i=-7;i<=7;i++){ctx.beginPath();ctx.moveTo(i*pw/7,py);ctx.lineTo(i*pw/7,tl);ctx.stroke()}
+  const sh=ctx.createLinearGradient(-hw,0,hw,0),sx=.3+.1*Math.sin(t*.9)-input.front*.08;           // brillo de agua sobre la resina
+  sh.addColorStop(clamp(sx-.1,0,1),'rgba(255,255,255,0)');sh.addColorStop(clamp(sx,0,1),'rgba(255,255,255,.5)');sh.addColorStop(clamp(sx+.1,0,1),'rgba(255,255,255,0)');
+  ctx.fillStyle=sh;ctx.fillRect(-hw*1.1,-n,hw*2.2,n+py);
+  ctx.fillStyle='rgba(255,255,255,.55)';
+  for(let i=0;i<9;i++){const a=(i*2.399+1),b=(i*.37)%1;ctx.beginPath();ctx.arc(Math.sin(a)*hw*.55*b+Math.cos(i)*hw*.1,-n*(.2+.7*((i*.61)%1))*.9,1+((i*3)%3),0,7);ctx.fill()}
+  ctx.restore();
   const sc=u/420,off=input.touch&&!input.bot;
   drawFoot(0,-len,sc*.74,1.05,off&&feet.F.id===null);
   drawFoot(0,0,sc*1,1.3,off&&feet.B.id===null);
@@ -626,6 +651,10 @@ function drawHud(t){
   label(Math.max(0,Math.floor(s.x/METER))+' m',pad,top+38,18,'#fff8ea');
   drawMap(t,vw,top);
   ctx.textAlign='center';
+  if(s.jumpHold>0){                       // cuánto falta para despegar
+    const a=s.jumpHold/T.jumpHold;ctx.strokeStyle='#ffc94d';ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();ctx.arc(vw/2,vh*.56,24,-1.57,-1.57+a*6.283);ctx.stroke();
+    ctx.textBaseline='middle';label('Sostené',vw/2,vh*.56+42,18,'#ffc94d',4);ctx.textBaseline='top';
+  }
   if(G.inTube&&G.tube>.25)label('TUBO '+G.tube.toFixed(1),vw/2,vh*.25,44,'#7ef0e0');
   if(d<75&&!s.crash)label('¡Te alcanza! Bajá para agarrar velocidad',vw/2,vh*.33,Math.min(24,vw/18),'#ffc94d');
   else if(s.off>.1)label('¡Poné los pies!',vw/2,vh*.33,30,'#ffc94d');
@@ -636,26 +665,29 @@ function drawHud(t){
     const h=G.hintT;let m='';
     if(h<5)m=input.touch?'Dedo de adelante a la izquierda: subís por la pared':'← sube por la pared · → baja';
     else if(h<10)m='Arrastrá la cola para doblar más cerrado';
-    else if(h<15)m='Llegá arriba rápido y saltás';
+    else if(h<15)m='Para saltar, sostené la punta contra el borde';
     else if(h<20)m='Zigzag bien arriba de la ola: ahí ganás más velocidad';
     else{G.seenHints=true;store.set('hints2',true)}
     if(m)label(m,vw/2,vh*.5,Math.min(21,vw/21),'#fff8ea',5);
   }
 }
-function drawMap(t,vw,top){              // la ola vista de costado: de la espuma al hombro
-  const narrow=vw<640,mw=narrow?vw-28:Math.min(300,vw*.42),mh=narrow?42:48,mx=narrow?14:(vw-mw)/2,my=narrow?top+62:top,d=s.x-G.curlX,dMin=-70,dMax=760;
-  const wx=v=>mx+mw*(clamp(v,dMin,dMax)-dMin)/(dMax-dMin),base=my+mh-7,tall=mh-15;
-  const wh=v=>v<0?tall*.45:tall*taper(v/ZS)*(.45+.55*sstep(0,70,v));
-  ctx.save();ctx.beginPath();ctx.roundRect?ctx.roundRect(mx,my,mw,mh,10):ctx.rect(mx,my,mw,mh);ctx.fillStyle='rgba(10,50,62,.72)';ctx.fill();ctx.clip();
-  ctx.fillStyle='#22b5b4';ctx.beginPath();ctx.moveTo(mx,base+8);
-  for(let v=dMin;v<=dMax;v+=15)ctx.lineTo(wx(v),base-wh(v));
-  ctx.lineTo(mx+mw,base+8);ctx.closePath();ctx.fill();
-  ctx.fillStyle='rgba(6,70,90,.55)';ctx.fillRect(wx(0),my,wx(T.tube)-wx(0),mh);                 // zona del tubo
-  ctx.strokeStyle='#fff8ea';ctx.lineWidth=2;ctx.beginPath();
-  for(let v=0;v<=dMax;v+=15){const X=wx(v),Y=base-wh(v);v?ctx.lineTo(X,Y):ctx.moveTo(X,Y)}ctx.stroke();
-  ctx.fillStyle='#fff8ea';for(let i=0;i<8;i++){ctx.beginPath();ctx.arc(wx(-i*11)+2*Math.sin(t*5+i),base-(i*3%14)-Math.abs(Math.sin(t*4+i))*6,6.5,0,7);ctx.fill()}
-  const q=clamp((BASE-s.y)/(BASE-lipY(s.x)),0,1.4),X=wx(d),Y=base-q*wh(d),c=Math.cos(s.th),sn=Math.sin(s.th);
-  ctx.strokeStyle='#ffc94d';ctx.lineWidth=3;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(X,Y);ctx.lineTo(X+c*13,Y-(s.air?0:-sn*9));ctx.stroke();
+function drawMap(t,vw,top){              // la ola de frente: rompe a la izquierda y se apaga hacia el hombro
+  const narrow=vw<640,mw=narrow?vw-28:Math.min(320,vw*.44),mh=narrow?56:62,mx=narrow?14:(vw-mw)/2,my=narrow?top+62:top,d=s.x-G.curlX,dMin=-70,dMax=760;
+  const wx=v=>mx+mw*Math.pow((clamp(v,dMin,dMax)-dMin)/(dMax-dMin),.62),base=my+mh-5,tall=mh-13;
+  const wh=v=>tall*Math.pow(taper(v/ZS),1.6)*(v<130?.98:.62+.36*(1-sstep(130,520,v)));
+  ctx.save();ctx.beginPath();ctx.roundRect?ctx.roundRect(mx,my,mw,mh,10):ctx.rect(mx,my,mw,mh);ctx.clip();
+  const sky=ctx.createLinearGradient(0,my,0,base);sky.addColorStop(0,'#3d8fae');sky.addColorStop(1,'#f4c999');
+  ctx.fillStyle=sky;ctx.fillRect(mx,my,mw,mh);
+  const px=wx(52),pk=base-tall,tipX=wx(-18),tipY=pk+tall*.46;
+  const body=ctx.createLinearGradient(0,pk,0,base);body.addColorStop(0,'#8feada');body.addColorStop(.55,'#1fa8ad');body.addColorStop(1,'#0b6d80');
+  const crest=()=>{ctx.moveTo(mx+mw+4,base-wh(dMax));for(let v=dMax;v>=140;v-=25)ctx.lineTo(wx(v),base-wh(v));
+    ctx.quadraticCurveTo(wx(95),pk+1,px,pk);ctx.quadraticCurveTo(wx(4),pk-2,tipX,tipY)};
+  ctx.beginPath();crest();ctx.quadraticCurveTo(wx(26),pk+tall*.2,wx(50),pk+tall*.6);ctx.quadraticCurveTo(wx(36),base+2,wx(-24),base+3);ctx.lineTo(mx+mw+4,base+6);ctx.closePath();ctx.fillStyle=body;ctx.fill();
+  ctx.fillStyle='rgba(4,48,64,.7)';ctx.beginPath();ctx.moveTo(tipX,tipY);ctx.quadraticCurveTo(wx(26),pk+tall*.2,wx(50),pk+tall*.6);ctx.quadraticCurveTo(wx(36),base+2,wx(-24),base+3);ctx.closePath();ctx.fill();   // adentro del tubo
+  ctx.strokeStyle='#fff8ea';ctx.lineWidth=2.2;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();crest();ctx.stroke();
+  ctx.fillStyle='#fff8ea';for(let i=0;i<11;i++){ctx.beginPath();ctx.arc(mx+((i*17)%(wx(-14)-mx+1))+2*Math.sin(t*5+i),base-(i*5%22)-Math.abs(Math.sin(t*4+i))*5,6+(i%3),0,7);ctx.fill()}
+  const q=clamp((BASE-s.y)/(BASE-lipY(s.x)),0,1),over=Math.max(0,(lipY(s.x)-s.y)/40),X=wx(d),hh=d<130?tall*(d<52?.6:.6+.38*sstep(52,130,d)):wh(d),Y=base-q*hh-over*5,c=Math.cos(s.th),sn=Math.sin(s.th);
+  ctx.strokeStyle='#ffc94d';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(X,Y);ctx.lineTo(X+c*13,Y+(s.air?0:sn*9));ctx.stroke();
   ctx.fillStyle='#ff6b4a';ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(X,Y,5.5,0,7);ctx.fill();ctx.stroke();
   ctx.restore();
   const m=Math.max(0,Math.round(d/ZS)),spd=Math.round(s.v/10);
