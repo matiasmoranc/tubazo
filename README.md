@@ -14,8 +14,9 @@ node servidor.js
 
 | Momento | Gesto | Qué hace |
 |---|---|---|
-| Remando | Tocar izquierda y derecha alternando | Una brazada por toque |
-| Remando | Mantener apretado un lado | Girás con la mano en el agua |
+| Remando | Tocar izquierda y derecha con ritmo | Una brazada por toque |
+| Remando | Arrastrar el dedo | La tabla mira hacia ese lado |
+| Remando | Poner dos dedos mirando al mar | Pasás la espuma por abajo |
 | Tomando la ola | Mirar a la orilla y remar fuerte | La ola te levanta |
 | Al aparecer ¡Parate! | Un dedo adelante y otro atrás | Te parás |
 | En la ola | Mover de costado el dedo de adelante | Marca la dirección |
@@ -24,7 +25,7 @@ node servidor.js
 | En la ola | Separar o juntar los dedos | Acelera o frena |
 | En la ola | Bajar | Da velocidad, y más cuanto más alto arrancás |
 
-En la PC: ← → remar o dirección, ↑ pararse, A y D cola, ↑ ↓ peso, P pausa.
+En la PC: ← → remar o dirección, ↑ ↓ mirar, Espacio pasar por abajo, ↑ pararse, A y D cola, ↑ ↓ peso, P pausa.
 
 ## Maniobras
 
