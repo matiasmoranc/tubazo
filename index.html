@@ -65,12 +65,13 @@ small{display:block;margin-top:10px;font-weight:600;opacity:.9}
       <b>PASAR LA ESPUMA</b><span>mirando al mar, poné dos dedos y pasás por abajo</span>
       <b>GIRAR ACOSTADO</b><span>arrastrá el dedo hacia donde quieras mirar. Abajo es la orilla</span>
       <b>TOMAR LA OLA</b><span>mirá hacia la orilla y remá fuerte cuando la ola te levante</span>
-      <b>PARARTE</b><span>cuando aparezca el aviso, poné un dedo adelante y otro atrás</span>
-      <b>EN LA OLA</b><span>dedo de adelante: dirección. Dedo de atrás: cola y derrape. Separar acelera y juntar frena</span>
-      <b>ROMPER EL LABIO</b><span>subí rápido y, al tocar el borde, girá para abajo con fuerza</span>
-      <b>SALTAR</b><span>sostené la punta contra el borde. Más velocidad, más vuelo</span>
+      <b>PARARTE</b><span>cuando aparezca el aviso, tocá la pantalla</span>
+      <b>EN LA OLA</b><span>apoyá un dedo y apuntá adonde querés ir: adelante, arriba, abajo o atrás. Si soltás, mantenés la altura</span>
+      <b>FRENAR</b><span>apoyá un segundo dedo: frena y arrastra la cola para derrapar</span>
+      <b>ROMPER EL LABIO</b><span>subí rápido y, al tocar el borde, apuntá para abajo</span>
+      <b>SALTAR</b><span>seguí apuntando para arriba contra el borde. Más velocidad, más vuelo</span>
     </div>
-    <small id="kbHint">Teclado: ← → remar · ↑ ↓ mirar · Espacio pasar por abajo · ↑ parate · en la ola: ← → dirección, A D cola, ↑ ↓ peso · P pausa</small>
+    <small id="kbHint">Teclado: ← → remar · ↑ ↓ mirar · ↑ parate · en la ola: flechas apuntan, Espacio frena, A D cola · P pausa</small>
   </div>
 </div>
 
@@ -212,7 +213,7 @@ void main(){
 /* ---------- Ajustes ---------- */
 const STEP=1/120, BASE=440, METER=40, ZS=38, MAXW=4;      // ZS: unidades de juego por metro
 const T={
-  g:9.8, rollRate:7, carve:2.9, pivotYaw:3.2, yawResp:9, weather:1.2, gripFlat:2.2, gripRail:7.5, dragQ:.012, dragL:.08, fall:.8, brakeTail:1.1, gasThrust:.7, pumpK:3, vMax:17, compK:70, compC:11,
+  g:9.8, rollRate:9, carve:3.6, trim:.24, pivotYaw:3.2, yawResp:9, weather:.5, gripFlat:3, gripRail:10, slipLoss:1.6, dragQ:.012, dragL:.08, fall:0, brakeTail:1.1, gasThrust:.7, pumpK:1.6, vMax:17, compK:70, compC:11,
   angIdle:.4, pivotSteer:.7, pivotRate:2.4, pivotDrag:150, 
   faceY:.5, pumpBoost:28,
   launchAng:-.3, jumpMin:1.06, jumpFull:150, gravAir:494, jumpHold:.22, jumpIntent:.45, 
@@ -241,13 +242,12 @@ const P={x:0,z:-16,h:0,v:0,last:0,lastT:-9,armL:0,armR:0,carry:0,y:0,foam:0,aim:
 let s=null;      // surfeando
 const newFoot=()=>({id:null,ax:0,ay:0,cx:0,cy:0,x:0,t0:0});
 const feet={F:newFoot(),B:newFoot()};
-const input={keys:new Set(),touch:false,bot:null,front:0,pivot:0,steer:0,avg:0};
-const axis={x:0,y:-1,base:0,on:false};
+const input={keys:new Set(),touch:false,bot:null,aim:null,m:0,pivot:0,steer:0,avg:0};
 
 /* ---------- Olas ---------- */
 function newSwell(){
   const big=Math.random();
-  swells.push({id:++G.sid,z:T.zSpawn,A0:lerp(3.6,6.4,big*big),peak:lineupX()+rnd(-45,45),zb:T.zBreak+rnd(-10,6),broke:false,b:0,cx:0,a:0,lf:14,c:T.waveC*rnd(.94,1.06),vc:rnd(6.5,7.4)});
+  swells.push({id:++G.sid,z:T.zSpawn,A0:lerp(3.6,6.4,big*big),peak:lineupX()+rnd(-45,45),zb:T.zBreak+rnd(-10,6),broke:false,b:0,cx:0,a:0,lf:14,c:T.waveC*rnd(.94,1.06),vc:rnd(6,6.9)});
 }
 function lineupX(){if(!Net.on)return P.x;let t=P.x,n=1;for(const id in Net.players){const r=Net.players[id];if(r.pos){t+=r.pos[0];n++}}return t/n}
 function updateSwell(w,dt){
@@ -287,28 +287,17 @@ function msg(t,d){G.msg=t;G.msgT=d||2.2}
 
 /* ---------- Pies y remada ---------- */
 const feetDown=()=>(feet.F.id!==null?1:0)+(feet.B.id!==null?1:0);
-function setAxis(){
-  const F=feet.F,B=feet.B;axis.on=F.id!==null&&B.id!==null;
-  if(axis.on){const dx=F.cx-B.cx,dy=F.cy-B.cy,l=Math.hypot(dx,dy)||1;axis.x=dx/l;axis.y=dy/l;axis.base=l}
-  else{axis.x=0;axis.y=-1}
-  for(const f of[F,B])if(f.id!==null){f.ax=f.cx;f.ay=f.cy;f.x=0}
-}
-function spread(){
-  if(!axis.on)return 0;
-  const sep=(feet.F.cx-feet.B.cx)*axis.x+(feet.F.cy-feet.B.cy)*axis.y,d=sep-axis.base,R=T.footRange*1.3;
-  return clamp(d>0?d/R:d/Math.max(50,Math.min(R,axis.base-40)),-1,1);
-}
-function readFeet(dt){
-  const ease=Math.min(1,14*dt);let front,pivot,avg;
-  if(input.bot){front=input.bot.front||0;pivot=input.bot.pivot||0;avg=input.bot.avg||0}
-  else{
-    for(const f of[feet.F,feet.B])if(f.id===null)f.x+=(0-f.x)*ease;
-    front=-feet.F.x;pivot=feet.B.x;avg=spread();
-    const k=input.keys,on=(...c)=>c.some(x=>k.has(x))?1:0;
-    front+=on('ArrowLeft')-on('ArrowRight');pivot+=on('KeyD')-on('KeyA');avg+=on('ArrowUp','KeyW')-on('ArrowDown','KeyS');
-  }
-  input.front=clamp(front,-1,1);input.pivot=clamp(pivot,-1,1);input.avg=clamp(avg,-1,1);
-  input.steer=clamp(input.front+input.pivot*T.pivotSteer,-1.4,1.4);
+function readFeet(dt){                 // un dedo apunta adonde querés ir; el segundo frena y arrastra la cola
+  if(input.bot){const b=input.bot;input.aim=b.aim===undefined?null:b.aim;input.m=b.m===undefined?1:b.m;input.pivot=b.pivot||0;input.avg=b.avg||0;input.steer=b.spin||0;return}
+  let ax=0,ay=0,pivot=0,avg=0;
+  const F=feet.F,B=feet.B,R=T.footRange;
+  if(F.id!==null){ax=(F.cx-F.ax)/R;ay=(F.cy-F.ay)/R}
+  if(B.id!==null){pivot=clamp((B.cx-B.ax)/R,-1,1);avg=-1}
+  const k=input.keys,on=(...c)=>c.some(x=>k.has(x))?1:0;
+  ax+=on('ArrowRight')-on('ArrowLeft');ay+=on('ArrowDown')-on('ArrowUp');
+  pivot+=on('KeyD')-on('KeyA');if(on('Space','KeyS'))avg=-1;
+  input.m=Math.min(1,Math.hypot(ax,ay));input.aim=input.m>.14?Math.atan2(ay,ax):null;
+  input.pivot=clamp(pivot,-1,1);input.avg=avg;input.steer=clamp(-ax,-1,1);   // en el aire: izquierda y derecha giran
 }
 function stroke(side){               // side -1 izquierda, +1 derecha
   const now=G.t,gap=now-P.lastT;if(gap<.11)return;
@@ -372,7 +361,7 @@ function stepPaddle(dt){
 function startPrompt(w){
   G.mode='prompt';G.prompt=T.standTime;ride=w;w.u=clamp(P.z-w.z,0,w.lf*1.2);
   sfxWhoosh();G.fade=0;
-  if(feetDown()===2)beginPopup();
+  if(feetDown()>0)beginPopup();
 }
 function stepPrompt(dt){
   const w=ride;G.prompt-=dt;
@@ -423,7 +412,7 @@ function startRide(){
   s={x,y:BASE-fr*H,th:.35,v:v0*ZS,air:false,vx:0,vy:0,spinA:0,spinV:0,total:0,airT:0,pumpCD:0,prevTh:.35,hops:0,armed:false,v0:0,w:0,lean:0,
      rebound:0,backed:false,lipT:0,cutT:0,jumpHold:0,crouch:.8,tv:.35,lipCD:0,px:v0,pu:-1.5,roll:0,comp:.4,compV:0,slip:0,wob:0};
   G.mode='ride';hudBtns();trail=[];
-  if(!G.seenRide){G.seenRide=true;msg('Bajá desde arriba para ganar velocidad',2.5)}
+  if(!G.seenRide){G.seenRide=true;msg('Apuntá con el dedo adonde querés ir',3)}
 }
 function stepRide(dt){
   readFeet(dt);
@@ -447,14 +436,23 @@ function faceAt(xm,f,w){
 }
 function stepFace(dt){
   const w=ride,xm=s.x/ZS,lip=lipY(s.x),hu=BASE-lip,f=clamp((BASE-s.y)/hu,0,1),F=faceAt(xm,f,w);
-  const st=input.steer,av=input.avg,piv=Math.abs(input.pivot),d=s.x-G.curlX;
+  const av=input.avg,piv=Math.abs(input.pivot),d=s.x-G.curlX,aim=input.aim;
+  // el dedo dice adónde ir; el jugador no maneja la tabla grado por grado
+  if(s.f0===undefined)s.f0=f;
+  let tg;
+  if(aim===null)tg=T.trim+(f-s.f0)*1.8;
+  else if(Math.cos(aim)>0&&Math.abs(aim)<.32)tg=T.trim+(f-s.f0)*1.8+aim*.6;     // derecho: sostiene esta altura
+  else{tg=Math.cos(aim)>0?aim+.08:aim;s.f0=f}
+  s.f0=clamp(s.f0,.1,.86);
+  const herr=wrap(tg-s.th),st=clamp(-herr*2.6,-1.3,1.3)*(aim===null?.8:.6+.4*input.m);
+  const wantUp=aim!==null&&Math.sin(aim)<-.35,wantDown=aim!==null&&Math.sin(aim)>.3;
   // cuerpo: la inclinación pone el canto en el agua
   s.roll+=(clamp(st,-1.3,1.3)*.9-s.roll)*Math.min(1,T.rollRate*dt);
   const th0=s.th,ct=Math.cos(s.th),sn=Math.sin(s.th);                               // adelante de la tabla: (ct,-sn) en (largo, cara)
   const rx=s.px,ru=s.pu-F.flow;                                                     // velocidad contra el agua, que sube
   const vt=rx*ct-ru*sn,vn=rx*sn+ru*ct,speed=Math.hypot(rx,ru);
   // giro: la tabla dobla por el canto y necesita velocidad; la cola pivotea
-  let wT=-s.roll*T.carve*clamp(Math.abs(vt)/7,.2,1.25)*Math.sign(vt||1)-input.pivot*T.pivotYaw;
+  let wT=-s.roll*T.carve*clamp(Math.abs(vt)/6,.5,1.25)*Math.sign(vt||1)-input.pivot*T.pivotYaw;
   const flowAng=wrap(Math.atan2(-s.pu,s.px)-s.th);
   wT+=flowAng*T.weather*(1-Math.min(1,Math.abs(s.roll)*1.6));                       // suelta, la tabla se alinea con su marcha
   wT+=T.fall*F.slope*Math.cos(s.th)*2*(1-Math.min(1,Math.abs(s.roll)*2));              // suelta, la punta cae hacia abajo de la ola
@@ -465,11 +463,13 @@ function stepFace(dt){
   const grip=lerp(T.gripFlat,T.gripRail,clamp(Math.abs(s.roll)*1.5+.25,0,1))*(1-.78*piv);
   const brake=Math.max(0,-av),gas=Math.max(0,av);
   const dragT=(T.dragQ*Math.abs(vt)+T.dragL)*vt*(1-.45*gas)+brake*T.brakeTail*vt;
-  const latF=-grip*vn;
-  let ax=-dragT*ct+latF*sn,au=dragT*sn+latF*ct;
+  let ax=-dragT*ct,au=dragT*sn;
   au-=T.g*Math.sin(F.slope);                                                        // la gravedad te baja, y más donde es más parada
   if(vt>0){const push=gas*T.gasThrust+T.pumpK*Math.abs(s.w)*f*(.5+.5*F.pocket);ax+=push*ct;au-=push*sn}   // carga en el giro y empuje de la ola
   s.px=clamp(s.px+ax*dt,-14,T.vMax);s.pu=clamp(s.pu+au*dt,-T.vMax,T.vMax);
+  {const r1=s.px,r2=s.pu-F.flow,sp=Math.hypot(r1,r2);                               // el canto cambia la dirección de la marcha sin comerse la velocidad
+    if(sp>.01){const pb=Math.atan2(-sn,ct),pv=Math.atan2(r2,r1),dl=wrap(pb-pv),nv=pv+dl*Math.min(1,grip*dt),sp2=sp*(1-T.slipLoss*Math.sin(dl)*Math.sin(dl)*dt);
+      s.px=Math.cos(nv)*sp2;s.pu=Math.sin(nv)*sp2+F.flow}}
   s.x+=s.px*ZS*dt;
   s.y-=s.pu/F.len*hu*dt;
   s.v=Math.hypot(s.px,s.pu)*ZS;s.tv=Math.atan2(-s.pu,s.px);
@@ -492,15 +492,15 @@ function stepFace(dt){
   }
   // el labio
   if(s.y<lip+8){
-    const rising=s.pu>.8,intent=rising&&(c>=0?st>T.jumpIntent:st<-T.jumpIntent);
+    const rising=s.pu>.8,intent=rising&&wantUp;
     const can=s.v>=G.vc*T.jumpMin&&(d>T.tube||s.v>G.vc+50);
-    const turnBack=(c>=0?st<-.2:st>.2)||piv>.4;
+    const turnBack=wantDown||piv>.4;
     s.y=lip+8;s.lipT+=dt;
     if(turnBack&&s.v>G.vc*.82&&G.t>s.lipCD&&s.pu>-1.5){lipHit(c);return}
     if(intent&&can){
       s.jumpHold+=dt;s.pu=Math.max(s.pu,1.5);
       if(s.jumpHold>=T.jumpHold){s.jumpHold=0;launch();return}
-    }else{s.jumpHold=0;if(s.pu>0)s.pu*=1-9*dt;s.px*=1-.5*dt}                      // sin insistir, frenás en el borde y caés
+    }else{s.jumpHold=0;if(s.pu>0)s.pu*=1-9*dt;s.px*=1-.5*dt;if(s.lipT>.3)s.pu=Math.min(s.pu,-1.5)}                      // sin insistir, frenás en el borde y caés
   }else{s.jumpHold=0;if(s.lipT>0){if(s.lipT>.55)trick('Floater',260);s.lipT=0}}
   if(fr<.14&&s.v<G.vc*.42)s.wob=(s.wob||0)+dt;else s.wob=0;
   if(s.wob>1.2)return wipe('Te quedaste sin velocidad arriba y caíste.');
@@ -636,7 +636,7 @@ function resize(){
 addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,200));
 
 /* ---------- Cámara alta mirando al mar ---------- */
-const cam={e:[0,16,30],f:[0,-.3,-1],r:[1,0,0],u:[0,1,0],tx:0,ty:0,tz:0,dist:11.5,hgt:5.2,ready:false,tb:0};
+const cam={e:[0,16,30],f:[0,-.3,-1],r:[1,0,0],u:[0,1,0],tx:0,ty:0,tz:0,dist:11.5,hgt:5.2,ready:false};
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return[a[0]/l,a[1]/l,a[2]/l]};
@@ -649,11 +649,7 @@ function updateCamera(dt){
   cam.tx+=(x+lookX-cam.tx)*k;cam.ty+=(y-cam.ty)*k;cam.tz+=(z-cam.tz)*k;cam.dist+=(dist-cam.dist)*k*.6;cam.hgt+=(hgt-cam.hgt)*k*.6;
   const sh=G.shake*G.shake*.5;
   cam.e=[cam.tx-lookX*.4+rnd(-sh,sh),cam.ty+cam.hgt+rnd(-sh,sh),cam.tz+cam.dist];
-  const inT=G.mode==='ride'&&s&&!s.air&&(s.x-G.curlX)<T.tube*1.2;
-  cam.tb+=((inT?1:0)-cam.tb)*Math.min(1,dt*2.2);
-  let look=[cam.tx,cam.ty+.2,cam.tz-cam.dist*.55];
-  if(cam.tb>.01&&ride&&s){const q=rideP(),eT=[q.x+6.5,q.y+1.1,q.z+1],lT=[q.x-3,q.y+.9,q.z-.1];
-    cam.e=mix3(cam.e,eT,cam.tb);look=mix3(look,lT,cam.tb)}
+  const look=[cam.tx,cam.ty+.2,cam.tz-cam.dist*.55];
   cam.f=norm([look[0]-cam.e[0],look[1]-cam.e[1],look[2]-cam.e[2]]);
   cam.r=norm(cross(cam.f,[0,1,0]));cam.u=cross(cam.r,cam.f);
 }
@@ -906,7 +902,15 @@ function drawMap(t,vw,top){
   ctx.textAlign='right';label('Ola a '+m+' m',mx+mw-2,my+mh+9,14,'#fbf8f2',4);
   if(G.combo>1){ctx.textAlign='left';label('Combo ×'+G.combo,mx,my+mh+32,18,'#7ef0e0',4)}
 }
+function drawStick(){
+  const R=T.footRange;
+  if(feet.F.id!==null){const f=feet.F;ctx.strokeStyle='rgba(251,248,242,.5)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(f.ax,f.ay,R,0,7);ctx.stroke();
+    const dx=f.cx-f.ax,dy=f.cy-f.ay,l=Math.hypot(dx,dy),k=l>R?R/l:1;ctx.fillStyle='rgba(255,201,77,.85)';ctx.beginPath();ctx.arc(f.ax+dx*k,f.ay+dy*k,18,0,7);ctx.fill()}
+  if(feet.B.id!==null){const f=feet.B;ctx.fillStyle='rgba(255,107,74,.75)';ctx.beginPath();ctx.arc(f.cx,f.cy,22,0,7);ctx.fill();
+    ctx.textAlign='center';ctx.textBaseline='middle';label('Freno',f.cx,f.cy-36,14,'#fbf8f2',3)}
+}
 function drawHud(t){
+  if(G.mode==='ride')drawStick();
   const vw=view.w,vh=view.h,pad=14+safe.l,top=10+safe.t;
   ctx.textAlign='left';ctx.textBaseline='top';
   label(Math.floor(G.total+G.score).toLocaleString('es'),pad,top,32,'#fbf8f2');
@@ -935,9 +939,8 @@ function drawHud(t){
   if(G.mode==='prompt'){
     const a=G.prompt/T.standTime,sz=Math.min(46,vw/9);
     label('¡PARATE!',vw/2,vh*.42,sz*(1+.06*Math.sin(t*16)),'#ffc94d',6);
-    label(isTouch?'Poné un dedo adelante y otro atrás':'Apretá ↑',vw/2,vh*.42+sz+6,Math.min(20,vw/20),'#fbf8f2',4);
+    label(isTouch?'Tocá la pantalla':'Apretá ↑',vw/2,vh*.42+sz+6,Math.min(20,vw/20),'#fbf8f2',4);
     ctx.fillStyle='rgba(20,42,68,.6)';ctx.fillRect(vw*.25,vh*.42+sz+36,vw*.5,8);ctx.fillStyle='#ffc94d';ctx.fillRect(vw*.25,vh*.42+sz+36,vw*.5*a,8);
-    if(isTouch){for(const[f,y]of[[feet.F,.68],[feet.B,.86]]){ctx.strokeStyle=f.id===null?'#fbf8f2':'#ffc94d';ctx.lineWidth=4;ctx.beginPath();ctx.arc(vw/2,vh*y,32,0,7);ctx.stroke()}}
   }
   if(G.mode==='paddle'&&!G.seenHints){
     const h=G.hintT;let m='';
@@ -1008,34 +1011,25 @@ function sfxTrick(perfect,combo){const b=392*Math.pow(2,Math.min(combo,8)/12);[1
 /* ---------- Entrada ---------- */
 const isTouch='ontouchstart' in window||navigator.maxTouchPoints>0;
 const GAME_KEYS=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyA','KeyD','KeyW','KeyS'];
-function isAhead(a,b){if(Math.abs(a.y-b.y)>26)return a.y<b.y;return view.w>view.h?a.x>b.x:a.y<b.y}
 hudC.addEventListener('pointerdown',e=>{
   e.preventDefault();if(e.pointerType==='touch')input.touch=true;
   if(G.mode==='paddle'){stroke(e.clientX<view.w/2?-1:1);if(feetDown()===1&&Math.abs(P.h)<1.3){P.dive=.9;spray(P.x,.2,P.z,18,1.6,2);msg('Pasás por abajo',.9);sfxSplash(.2)}}
-  if(G.mode!=='paddle'&&G.mode!=='prompt'&&G.mode!=='popup'&&G.mode!=='ride')return;
-  if(feetDown()===2)return;
-  const p={x:e.clientX,y:e.clientY};let f;
-  if(feetDown()===0)f=e.clientY<view.h*.78?feet.F:feet.B;
-  else{
-    const other=feet.F.id!==null?feet.F:feet.B,free=other===feet.F?feet.B:feet.F;
-    const wantF=isAhead(p,{x:other.cx,y:other.cy});
-    if(wantF===(other===feet.F)){Object.assign(free,other);other.id=null;f=other}else f=free;
-  }
-  f.id=e.pointerId;f.cx=p.x;f.cy=p.y;f.t0=G.t;f.moved=false;f.dx0=p.x;f.dy0=p.y;setAxis();
-  if(G.mode==='prompt'&&feetDown()===2)beginPopup();
+  if(G.mode==='prompt')beginPopup();
+  if(G.mode!=='paddle'&&G.mode!=='popup'&&G.mode!=='ride')return;
+  const f=feet.F.id===null?feet.F:feet.B.id===null?feet.B:null;if(!f)return;
+  f.id=e.pointerId;f.cx=f.ax=f.dx0=e.clientX;f.cy=f.ay=f.dy0=e.clientY;f.t0=G.t;f.moved=false;
   try{hudC.setPointerCapture(e.pointerId)}catch(err){}
 });
 hudC.addEventListener('pointermove',e=>{
-  e.preventDefault();const R=T.footRange,px=-axis.y,py=axis.x;
+  e.preventDefault();const R=T.footRange*1.3;
   for(const f of[feet.F,feet.B])if(f.id===e.pointerId){
     f.cx=e.clientX;f.cy=e.clientY;
     if(G.mode==='paddle'){const dx=f.cx-f.dx0,dy=f.cy-f.dy0;if(Math.hypot(dx,dy)>20){f.moved=true;P.aim=Math.atan2(dx,-dy)}}   // arrastrar marca hacia dónde mirar
-    let d=(f.cx-f.ax)*px+(f.cy-f.ay)*py;
-    if(Math.abs(d)>R){const over=d-Math.sign(d)*R;f.ax+=over*px;f.ay+=over*py;d=Math.sign(d)*R}
-    f.x=d/R;
+    const dx=f.cx-f.ax,dy=f.cy-f.ay,l=Math.hypot(dx,dy);
+    if(l>R){const k=(l-R)/l;f.ax+=dx*k;f.ay+=dy*k}                 // el centro sigue al dedo si se pasa
   }
 });
-const liftFoot=e=>{let was=false;for(const f of[feet.F,feet.B])if(f.id===e.pointerId){f.id=null;was=true}if(was)setAxis()};
+const liftFoot=e=>{for(const f of[feet.F,feet.B])if(f.id===e.pointerId)f.id=null};
 hudC.addEventListener('pointerup',liftFoot);hudC.addEventListener('pointercancel',liftFoot);
 input.kt={};
 addEventListener('keydown',e=>{
@@ -1047,14 +1041,14 @@ addEventListener('keydown',e=>{
     if(G.mode==='paddle'){if(e.code==='ArrowLeft'||e.code==='KeyA'){stroke(-1);input.kt.ArrowLeft=G.t}if(e.code==='ArrowRight'||e.code==='KeyD'){stroke(1);input.kt.ArrowRight=G.t}}
     if(G.mode==='prompt'&&(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'))beginPopup();
     if(G.mode==='paddle'&&e.code==='Space'&&Math.abs(P.h)<1.3){P.dive=.9;spray(P.x,.2,P.z,18,1.6,2);msg('Pasás por abajo',.9)}
-    if(e.code!=='Space')input.keys.add(e.code);
+    if(e.code!=='Space'||G.mode==='ride')input.keys.add(e.code);
   }
   if(e.code==='KeyP'||e.code==='Escape'){G.mode==='pause'?resume():G.mode!=='menu'&&pause()}
   if(e.code==='KeyM')toggleMute();
 });
 addEventListener('keyup',e=>input.keys.delete(e.code));
 addEventListener('contextmenu',e=>e.preventDefault());
-const clearFeet=()=>{feet.F.id=feet.B.id=null;axis.on=false;axis.x=0;axis.y=-1;input.keys.clear()};
+const clearFeet=()=>{feet.F.id=feet.B.id=null;input.keys.clear()};
 addEventListener('blur',()=>{clearFeet();if(G.mode!=='menu'&&G.mode!=='pause')pause()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&G.mode!=='menu'&&G.mode!=='pause')pause();syncAudio()});
 addEventListener('pagehide',()=>{if(ac)ac.suspend()});

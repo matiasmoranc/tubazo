@@ -24,14 +24,13 @@ Comparten las olas, se ven en el agua y, si chocan fuerte, se caen los dos. La c
 | Remando | Arrastrar el dedo | La tabla mira hacia ese lado |
 | Remando | Poner dos dedos mirando al mar | Pasás la espuma por abajo |
 | Tomando la ola | Mirar a la orilla y remar fuerte | La ola te levanta |
-| Al aparecer ¡Parate! | Un dedo adelante y otro atrás | Te parás |
-| En la ola | Mover de costado el dedo de adelante | Marca la dirección |
-| En la ola | Arrastrar la cola con el dedo de atrás | Dobla más cerrado y frena |
-| En la ola | Girar a fondo | Volvés hacia atrás |
-| En la ola | Separar o juntar los dedos | Acelera o frena |
+| Al aparecer ¡Parate! | Tocar la pantalla | Te parás |
+| En la ola | Apuntar con un dedo | La tabla va hacia ahí |
+| En la ola | Soltar | Mantiene la altura |
+| En la ola | Segundo dedo | Frena y arrastra la cola |
 | En la ola | Bajar | Da velocidad, y más cuanto más alto arrancás |
 
-En la PC: ← → remar o dirección, ↑ ↓ mirar, Espacio pasar por abajo, ↑ pararse, A y D cola, ↑ ↓ peso, P pausa.
+En la PC: ← → remar, ↑ ↓ mirar, ↑ pararse. En la ola: flechas apuntan, Espacio frena, A y D cola, P pausa.
 
 ## Física
 
