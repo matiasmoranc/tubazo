@@ -35,6 +35,7 @@ p{margin:8px 0;font-weight:800;font-size:clamp(14px,3.6vmin,17px);line-height:1.
 input{user-select:text;-webkit-user-select:text}
 .net{display:grid;grid-template-columns:1fr auto;gap:8px;margin:12px auto 0;max-width:340px}
 .net input{min-width:0;font:800 16px var(--body);padding:9px 12px;border:0;border-radius:10px;background:var(--foam);color:var(--ink)}
+.btn:disabled{opacity:.6}
 .btn2{font:400 18px var(--display);color:var(--foam);background:var(--coral);border:0;border-radius:10px;padding:9px 14px;cursor:pointer}
 .btn:focus-visible,.btn2:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 #netMsg:empty{display:none}
@@ -53,12 +54,10 @@ small{display:block;margin-top:10px;font-weight:600;opacity:.9}
   <div class="card">
     <h1>TUBAZO</h1>
     <p>Remá, elegí tu ola, parate y surfeala.</p>
-    <button class="btn" id="bStart">Jugar solo</button>
+    <button class="btn" id="bOnline">Jugar online</button>
     <div class="net">
       <input id="inName" maxlength="12" placeholder="Tu nombre" aria-label="Tu nombre" autocomplete="off">
-      <button class="btn2" id="bHost">Crear playa</button>
-      <input id="inCode" maxlength="4" placeholder="Código" aria-label="Código de playa" autocomplete="off" autocapitalize="characters">
-      <button class="btn2" id="bJoin">Unirme</button>
+      <button class="btn2" id="bStart">Jugar solo</button>
     </div>
     <p id="netMsg" aria-live="polite"></p>
     <div class="how">
@@ -858,7 +857,7 @@ function drawHud(t){
   const vw=view.w,vh=view.h,pad=14+safe.l,top=10+safe.t;
   ctx.textAlign='left';ctx.textBaseline='top';
   label(Math.floor(G.total+G.score).toLocaleString('es'),pad,top,32,'#fbf8f2');
-  label(Net.on?'Playa '+Net.code+' · '+(1+Object.keys(Net.players).length)+' en el agua':'Mejor ola '+G.bestWave.toLocaleString('es'),pad,top+36,14,'#fbf8f2',4);
+  label(Net.on?(Object.keys(Net.players).length?(1+Object.keys(Net.players).length)+' en el agua':'Playa abierta: esperando surfistas'):'Mejor ola '+G.bestWave.toLocaleString('es'),pad,top+36,14,'#fbf8f2',4);
   if(G.mode==='ride'&&s)drawMap(t,vw,top);else drawRadar(vw,top);
   ctx.textAlign='center';
   if(G.mode==='ride'&&s){
@@ -1010,7 +1009,7 @@ document.addEventListener('gesturestart',e=>e.preventDefault());
 
 /* ---------- Jugar con amigos: los teléfonos se conectan directo, sin servidor propio ---------- */
 const COLORS=['#e4572e','#2e9e6b','#c04fd0','#e0a100','#2a6f98','#d6336c'];
-const Net={on:false,host:false,code:'',name:'',color:COLORS[0],id:'',peer:null,conns:[],conn:null,players:{},timer:0,hitCD:0,last:null};
+const Net={on:false,host:false,slot:0,hostPeer:null,lastHost:0,name:'',color:COLORS[0],id:'',peer:null,conns:[],conn:null,players:{},timer:0,hitCD:0,last:null};
 const PEERJS='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 function netStatus(t){$('netMsg').textContent=t}
 function loadPeer(cb){
@@ -1018,36 +1017,54 @@ function loadPeer(cb){
   const e=document.createElement('script');e.src=PEERJS;e.onload=cb;e.onerror=()=>netStatus('No se pudo cargar la conexión. Revisá internet.');document.head.append(e);
 }
 function netName(){const n=$('inName').value.trim().slice(0,12)||'Surfista';store.set('name',n);Net.name=n}
-function newCode(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ';let c='';for(let i=0;i<4;i++)c+=a[Math.floor(Math.random()*a.length)];return c}
-function hostBeach(){
-  netName();netStatus('Creando la playa…');
-  loadPeer(()=>{
-    const code=newCode(),p=new Peer('tubazo-playa-'+code);Net.peer=p;
-    p.on('open',id=>{Net.on=true;Net.host=true;Net.code=code;Net.id=id;Net.color=COLORS[0];Net.nextColor=1;store.set('code',code);start();msg('Código de playa: '+code,5);netLoop()});
-    p.on('connection',c=>{
-      c.on('open',()=>{Net.conns.push(c);c.send({t:'hi',c:COLORS[(Net.nextColor++)%COLORS.length],w:swellData()})});
-      c.on('data',d=>hostRecv(c,d));
-      c.on('close',()=>dropConn(c));c.on('error',()=>dropConn(c));
-    });
-    p.on('error',e=>netStatus('Error de conexión: '+e.type));
+const SLOTS=6,MAXP=8,slotId=n=>'tubazo-abierta-v1-'+n;     // playas fijas: quien llega entra a la primera con lugar
+function enterOpen(){
+  netName();netStatus('Buscando surfistas en el agua…');$('bOnline').disabled=true;
+  loadPeer(()=>seek(1));
+}
+function seek(n){                       // mira si la playa n tiene dueño; si está vacía, la abre
+  if(n>SLOTS)return noBeach();
+  const old=Net.peer;if(old&&!old.destroyed&&old!==Net.hostPeer)old.destroy();
+  const p=new Peer();Net.peer=p;let done=false;
+  const next=fn=>{if(done)return;done=true;clearTimeout(tm);fn()};
+  const tm=setTimeout(()=>next(()=>claim(n,0)),4000);
+  p.on('open',id=>{
+    Net.id=id;const c=p.connect(slotId(n),{reliable:true});
+    c.on('open',()=>next(()=>{Net.conn=c;Net.slot=n;Net.on=true;Net.host=false;Net.lastHost=G.t;c.pid=id;
+      c.on('data',clientRecv);c.on('close',lost)}));
+    c.on('data',d=>{if(d.t==='full')next(()=>seek(n+1))});
   });
+  p.on('error',e=>{if(e.type==='peer-unavailable')next(()=>claim(n,0));else if(e.type!=='network')next(()=>seek(n+1))});
+}
+function claim(n,tries){                // nadie en esta playa: la abro yo
+  if(Net.peer&&!Net.peer.destroyed)Net.peer.destroy();
+  const p=new Peer(slotId(n));Net.peer=p;
+  p.on('open',id=>{
+    Net.hostPeer=p;Net.on=true;Net.host=true;Net.slot=n;Net.id=id;Net.conn=null;Net.conns=[];Net.players={};Net.nextColor=1;Net.color=COLORS[0];
+    G.sid=Math.max(G.sid,1000+swells.reduce((a,w)=>Math.max(a,w.id||0),0));
+    if(G.mode==='menu'){start();msg('Abriste la playa. Cuando alguien entre, lo vas a ver acá',4)}
+    netLoop();
+  });
+  p.on('connection',c=>{
+    c.on('open',()=>{
+      if(Net.conns.length+1>=MAXP){c.send({t:'full'});setTimeout(()=>c.close(),300);return}
+      Net.conns.push(c);c.send({t:'hi',c:COLORS[(Net.nextColor++)%COLORS.length],w:swellData()});msg('Entró alguien a la playa',2.5);
+    });
+    c.on('data',d=>hostRecv(c,d));c.on('close',()=>dropConn(c));c.on('error',()=>dropConn(c));
+  });
+  p.on('error',e=>{
+    if(Net.host&&Net.peer===p)return;
+    if(e.type==='unavailable-id'){setTimeout(()=>tries<1?seek(n):seek(n+1),rnd(300,900));p.destroy()}   // otro la abrió justo antes
+    else noBeach();
+  });
+}
+function noBeach(){netStatus('No pude conectarme. Probá con otra red o jugá solo.');$('bOnline').disabled=false}
+function lost(){                        // se fue quien tenía la playa: alguien la reabre y los demás vuelven
+  if(!Net.on)return;
+  Net.on=false;Net.conn=null;Net.players={};msg('Se fue quien abrió la playa. Reconectando…',3);
+  setTimeout(()=>seek(1),rnd(200,1800));
 }
 function dropConn(c){Net.conns=Net.conns.filter(x=>x!==c);if(c.pid){delete Net.players[c.pid];netBroadcast({t:'bye',i:c.pid})}}
-function joinBeach(){
-  const code=$('inCode').value.trim().toUpperCase();if(code.length!==4)return netStatus('El código tiene 4 letras.');
-  netName();netStatus('Buscando la playa '+code+'…');
-  loadPeer(()=>{
-    const p=new Peer();Net.peer=p;
-    p.on('open',id=>{
-      Net.id=id;const c=p.connect('tubazo-playa-'+code,{reliable:true});Net.conn=c;
-      const fail=setTimeout(()=>{if(!Net.on)netStatus('No encontré esa playa. Revisá el código.')},9000);
-      c.on('open',()=>{clearTimeout(fail);Net.on=true;Net.host=false;Net.code=code;c.pid=id});
-      c.on('data',clientRecv);
-      c.on('close',()=>{if(Net.on){Net.on=false;Net.players={};msg('Se cortó la playa: seguís solo',3)}});
-    });
-    p.on('error',e=>netStatus(e.type==='peer-unavailable'?'No encontré esa playa. Revisá el código.':'Error de conexión: '+e.type));
-  });
-}
 function netSend(m){
   if(!Net.on)return;
   if(Net.host)netBroadcast(m);else if(Net.conn&&Net.conn.open)Net.conn.send(m);
@@ -1060,7 +1077,8 @@ function hostRecv(c,d){
   else if(d.t==='c'){if(d.to===Net.id)collided(d.n);else netBroadcast(d,c)}
 }
 function clientRecv(d){
-  if(d.t==='hi'){Net.color=d.c;applySwells(d.w);if(G.mode==='menu')start();netLoop();msg('Entraste a la playa '+Net.code,3)}
+  Net.lastHost=G.t;
+  if(d.t==='hi'){Net.color=d.c;applySwells(d.w);if(G.mode==='menu')start();netLoop();msg('Entraste a la playa',3)}
   else if(d.t==='s'){if(d.i!==Net.id)playerMsg(d)}
   else if(d.t==='w')applySwells(d.w);
   else if(d.t==='h')hitMsg(d);
@@ -1098,6 +1116,7 @@ function netLoop(){
     if(!Net.on||G.mode==='menu')return;
     const q=myState(),sp=G.mode==='ride'&&s?s.v/ZS:P.v;
     netSend({t:'s',i:Net.id,x:+q.x.toFixed(2),y:+q.y.toFixed(2),z:+q.z.toFixed(2),f:q.f.map(v=>+v.toFixed(2)),nv:q.nv.map(v=>+v.toFixed(2)),m:q.m,l:+q.l.toFixed(2),cr:+q.cr.toFixed(2),a:+P.armL.toFixed(2),b:+P.armR.toFixed(2),sp:+sp.toFixed(1),c:Net.color,nm:Net.name,vel:G.myVel||[0,0,0]});
+    if(Net.host&&(G.mode==='pause'||document.hidden))updateSea(.08);    // las olas siguen para los demás
     if(Net.host&&++n%12===0)netBroadcast({t:'w',w:swellData()});
   },80);
 }
@@ -1109,6 +1128,7 @@ function collided(name){
 }
 function stepNet(dt){
   if(!Net.on)return;
+  if(!Net.host&&G.t-Net.lastHost>7&&G.mode!=='menu')return lost();
   const q=G.mode==='menu'?null:myState();
   if(q&&Net.last)G.myVel=[(q.x-Net.last.x)/dt,(q.y-Net.last.y)/dt,(q.z-Net.last.z)/dt].map(v=>+clamp(v,-30,30).toFixed(1));
   if(q)Net.last=q;
@@ -1138,9 +1158,8 @@ function start(){
 function pause(){G.prev=G.mode;G.mode='pause';$('ovPause').hidden=false;hudBtns();syncAudio()}
 function resume(){$('ovPause').hidden=true;G.mode=G.prev;clearFeet();hudBtns()}
 function toggleMute(){muted=!muted;store.set('muted',muted);$('bMute').style.opacity=muted?.45:1;if(sea)sea.g.gain.value=muted?0:.13}
-$('bStart').onclick=start;$('bHost').onclick=hostBeach;$('bJoin').onclick=joinBeach;
+$('bStart').onclick=start;$('bOnline').onclick=enterOpen;
 $('inName').value=store.get('name','');
-{const q=new URLSearchParams(location.search).get('playa');if(q){$('inCode').value=q.toUpperCase();netStatus('Te invitaron a la playa '+q.toUpperCase()+'. Tocá Unirme.')}}
 $('bResume').onclick=resume;$('bPause').onclick=pause;$('bMute').onclick=()=>{audioInit();toggleMute()};
 $('bMute').style.opacity=muted?.45:1;
 if(isTouch)$('kbHint').hidden=true;
@@ -1166,7 +1185,7 @@ for(let i=0;i<3;i++){newSwell();swells[i].z=-240+i*75}
 requestAnimationFrame(frame);
 
 /* Gancho para probar con bots */
-window.__surf={Net,hostBeach,joinBeach,collided,myState,G,T,P,input,feet,cam,view,step,start,stroke,render,beginPopup,setSwells(v){swells=v},get swells(){return swells},get s(){return s},get ride(){return ride}};
+window.__surf={Net,enterOpen,collided,myState,G,T,P,input,feet,cam,view,step,start,stroke,render,beginPopup,setSwells(v){swells=v},get swells(){return swells},get s(){return s},get ride(){return ride}};
 </script>
 </body>
 </html>

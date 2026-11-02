@@ -12,9 +12,9 @@ node servidor.js
 
 ## Jugar con amigos
 
-Tocá **Crear playa** y pasales el código de 4 letras, o el enlace `https://matiasmoranc.github.io/tubazo/?playa=CODIGO`. Tus amigos lo escriben y tocan **Unirme**. Comparten las olas, se ven en el agua y, si chocan fuerte, se caen los dos.
+Tocá **Jugar online**. Entrás solo a la playa donde ya hay gente, sin códigos. Si no hay nadie, tu partida queda abierta para el próximo que entre. Cada playa tiene lugar para 8 surfistas.
 
-La conexión es directa entre los teléfonos: PeerJS, un servicio público y gratuito, solo los presenta. Quien crea la playa tiene que seguir conectado.
+Comparten las olas, se ven en el agua y, si chocan fuerte, se caen los dos. La conexión es directa entre los teléfonos: PeerJS, un servicio público y gratuito, solo los presenta. Si se va quien abrió la playa, otro jugador la reabre solo.
 
 ## Controles
 
