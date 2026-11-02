@@ -67,6 +67,9 @@ small{display:block;margin-top:10px;font-weight:600;opacity:.9}
       <b>TOMAR LA OLA</b><span>mirá hacia la orilla y remá fuerte cuando la ola te levante</span>
       <b>PARARTE</b><span>cuando aparezca el aviso, tocá la pantalla</span>
       <b>EN LA OLA</b><span>apoyá un dedo y apuntá adonde querés ir: adelante, arriba, abajo o atrás. Si soltás, mantenés la altura</span>
+      <b>LÍNEA DE ESTILO</b><span>curvas limpias y cerca del labio llenan el flow y encienden tu estela. Repetir el mismo truco rinde menos</span>
+      <b>TUBO</b><span>la salida se cierra: cuanto más tarde salís, más vale, pero te puede tragar</span>
+      <b>CADA OLA</b><span>mirá el tipo: pared larga, tubera, con sección o bomba. Viento, marea y energía cambian la sesión</span>
       <b>FRENAR</b><span>apoyá un segundo dedo: frena y arrastra la cola para derrapar</span>
       <b>ROMPER EL LABIO</b><span>subí rápido y, al tocar el borde, apuntá para abajo</span>
       <b>SALTAR</b><span>seguí apuntando para arriba contra el borde. Más velocidad, más vuelo</span>
@@ -90,6 +93,7 @@ float env(float x,int i){
   float d=x-uW[i].z,dp=x-uX[i].x;
   float pre=.38+.62*exp(-dp*dp/1800.);
   float post=d>=0.?mix(1.,.5,smoothstep(20.,170.,d)):mix(.62,.4,smoothstep(0.,70.,-d));
+  post*=mix(1.,.6,smoothstep(0.,7.,x-uX[i].z));
   return mix(pre,post,uX[i].y);
 }
 float height(float x,float z){
@@ -113,6 +117,7 @@ void main(){
       foam=max(foam,wall*smoothstep(-8.,-3.,u)*(1.-smoothstep(lf+5.,lf+13.,u)));
       foam=max(foam,wall*.55*exp(min(u+8.,0.)/16.)*step(u,lf));
       foam=max(foam,b*smoothstep(.92,1.,q)*(1.-smoothstep(8.,42.,d)));
+      float s2=step(uX[i].z-2.5,x);foam=max(foam,s2*b*smoothstep(-8.,-3.,u)*(1.-smoothstep(lf+5.,lf+11.,u)));   // sección que cerró
     }
   }
   {float hx=(x-uHit.x)/4.,hz=(z-uHit.y)/5.;foam=max(foam,min(1.,uHit.z*.8)*exp(-hx*hx-hz*hz));}
@@ -235,7 +240,7 @@ const FONT="'Lilita One',Impact,'Arial Black',sans-serif";
 /* ---------- Estado ---------- */
 const G={mode:'menu',prev:'menu',t:0,ts:1,score:0,total:0,waves:0,bestWave:store.get('best3p',0),combo:0,comboT:0,bestTrick:null,bestTrickPts:0,
   tube:0,bestTube:0,inTube:false,mult:1,curlX:0,vc:285,shake:0,flash:0,fade:0,toast:null,prompt:0,popup:0,msg:'',msgT:0,
-  sid:0,seenHints:store.get('hints3',false),hintT:0,nextSwell:2,setLeft:3,stats:{launches:0,perfects:0,oks:0,pumps:0}};
+  wind:.3,windT:.3,tide:0,tideT:0,condT:40,energy:1,flow:0,fsum:0,ft:0,line:[],seen:{},tubeC:0,sid:0,seenHints:store.get('hints3',false),hintT:0,nextSwell:2,setLeft:3,stats:{launches:0,perfects:0,oks:0,pumps:0}};
 let swells=[],parts=[],pops=[],trail=[];
 let ride=null;   // ola que estás surfeando
 const P={x:0,z:-16,h:0,v:0,last:0,lastT:-9,armL:0,armR:0,carry:0,y:0,foam:0,aim:null,dive:0,beat:0,catch:0,lift:null};     // remando
@@ -245,23 +250,37 @@ const feet={F:newFoot(),B:newFoot()};
 const input={keys:new Set(),touch:false,bot:null,aim:null,m:0,pivot:0,steer:0,avg:0};
 
 /* ---------- Olas ---------- */
+const KINDS=[
+  {n:'Pared larga',p:.4,a:1,vc:.9,flow:1},
+  {n:'Tubera',p:.3,a:1.05,vc:1.14,flow:1.14},
+  {n:'Con sección',p:.22,a:1,vc:1,flow:1,sec:true},
+  {n:'Bomba',p:.08,a:1.42,vc:1.05,flow:1.16}];
 function newSwell(){
-  const big=Math.random();
-  swells.push({id:++G.sid,z:T.zSpawn,A0:lerp(3.6,6.4,big*big),peak:lineupX()+rnd(-45,45),zb:T.zBreak+rnd(-10,6),broke:false,b:0,cx:0,a:0,lf:14,c:T.waveC*rnd(.94,1.06),vc:rnd(6,6.9)});
+  let r=Math.random(),K=0;for(;K<KINDS.length-1;K++){r-=KINDS[K].p;if(r<0)break}
+  const big=Math.random(),k=KINDS[K],peak=lineupX()+rnd(-45,45);
+  swells.push({id:++G.sid,K,z:T.zSpawn,A0:lerp(3.6,6.4,big*big)*k.a,peak,zb:T.zBreak+rnd(-10,6)+G.tide*11,broke:false,b:0,cx:0,a:0,lf:14,
+    c:T.waveC*rnd(.94,1.06),vc:rnd(6,6.9)*k.vc,ph:rnd(0,6),sec:k.sec?peak+rnd(60,95):null,cx2:null});
+  if(K===3&&G.mode==='paddle')msg('¡Viene una bomba!',3);
 }
 function lineupX(){if(!Net.on)return P.x;let t=P.x,n=1;for(const id in Net.players){const r=Net.players[id];if(r.pos){t+=r.pos[0];n++}}return t/n}
 function updateSwell(w,dt){
   w.z+=w.c*dt;
   const grow=.2+.8*sstep(-260,-10,w.z);
   w.a=w.A0*grow*(1-.5*sstep(40,T.zEnd,w.z));
-  w.lf=lerp(16,6.4,sstep(-110,-6,w.z));
+  w.lf=lerp(16,6.4-G.wind*.9,sstep(-110,-6,w.z));
   if(!w.broke&&w.z>=w.zb){w.broke=true;w.cx=w.peak;sfxBoom()}
-  if(w.broke){w.b=Math.min(1,w.b+dt*.7);w.cx+=w.vc*dt}
+  if(w.broke){
+    w.b=Math.min(1,w.b+dt*.7);
+    w.cx+=w.vc*(1+.18*Math.sin(w.cx*.04+(w.ph||0)))*(w===ride?1+.14*G.tubeC:1)*dt;     // la rompiente acelera y afloja por tramos
+    if(w.sec!==null&&w.cx2===null&&w.sec-w.cx<46){w.cx2=w.sec;if(w===ride)msg('¡Sección adelante! Pasala rápido o por arriba',2.6);sfxBoom()}
+    if(w.cx2!==null)w.cx2-=4.5*dt;
+  }
 }
 const prof=(u,lf)=>u<0?Math.exp(-u*u/400):Math.exp(-u*u/(lf*lf));
 function env(x,w){
   const d=x-w.cx,dp=x-w.peak,pre=.38+.62*Math.exp(-dp*dp/1800);
-  const post=d>=0?lerp(1,.5,sstep(20,170,d)):lerp(.62,.4,sstep(0,70,-d));
+  let post=d>=0?lerp(1,.5,sstep(20,170,d)):lerp(.62,.4,sstep(0,70,-d));
+  if(w.cx2!==null&&w.cx2!==undefined)post*=lerp(1,.6,sstep(0,7,x-w.cx2));
   return lerp(pre,post,w.b);
 }
 function seaH(x,z){let h=0;for(const w of swells)h+=w.a*env(x,w)*prof(z-w.z,w.lf);return h}
@@ -302,15 +321,23 @@ function readFeet(dt){                 // un dedo apunta adonde querés ir; el s
 function stroke(side){               // side -1 izquierda, +1 derecha
   const now=G.t,gap=now-P.lastT;if(gap<.11)return;
   const good=side!==P.last||gap>.9,rhythm=sstep(.12,.36,gap);         // manotear rápido rinde poco: la brazada tiene que terminar
-  P.v=Math.min(T.paddleMax,P.v+(good?T.stroke:T.strokeWrong)*(.3+.7*rhythm));
+  const tired=.5+.5*Math.min(1,G.energy*2.2);G.energy=Math.max(0,G.energy-.009);
+  P.v=Math.min(T.paddleMax*tired,P.v+(good?T.stroke:T.strokeWrong)*(.3+.7*rhythm)*tired);
   P.h=wrap(P.h-side*T.strokeTurn);P.last=side;P.lastT=now;P.beat=rhythm;
   if(side<0)P.armL=1;else P.armR=1;
   const c=Math.cos(P.h),n=Math.sin(P.h);spray(P.x+c*side*.5,.1,P.z+n*side*.5,4,1.1,1.4);sfxPaddle();
 }
 
 /* ---------- Simulación ---------- */
+function stepSession(dt){
+  if(!(Net.on&&!Net.host)){G.condT-=dt;if(G.condT<=0){G.condT=rnd(55,90);G.windT=rnd(-1,1);G.tideT=rnd(-1,1);
+    if(G.mode==='paddle')msg(G.windT>.25?'Viento de tierra: olas limpias y huecas':G.windT<-.25?'Viento del mar: agua picada, más puntos':'Viento suave',3)}}
+  G.wind+=(G.windT-G.wind)*Math.min(1,dt*.3);G.tide+=(G.tideT-G.tide)*Math.min(1,dt*.1);
+  G.energy=clamp(G.energy+(G.mode==='ride'?.05:G.t-P.lastT>1.2?.04:0)*dt,0,1);
+}
 function step(dt){
   G.t+=dt;
+  stepSession(dt);
   updateSea(dt);
   stepNet(dt);
   if(G.comboT>0){G.comboT-=dt;if(G.comboT<=0)G.combo=0}
@@ -377,7 +404,7 @@ function stepPopup(dt){
 }
 function failTakeoff(r){G.waves++;ride=null;s=null;crash(P.x,P.y,P.z,r);G.score=0}
 function crash(x,y,z,reason){
-  G.mode='wipe';G.reason=reason;G.ts=.55;G.shake=1;G.flash=.8;G.after=2;G.crashAt={x,y,z,t:0};
+  G.energy=Math.max(0,G.energy-.2);G.mode='wipe';G.reason=reason;G.ts=.55;G.shake=1;G.flash=.8;G.after=2;G.crashAt={x,y,z,t:0};
   spray(x,y+.3,z,50,3.5,5);sfxSplash(1);hudBtns();pop(reason,'#fbf8f2',20);
 }
 function stepAfter(dt){
@@ -386,10 +413,11 @@ function stepAfter(dt){
   if(G.mode==='card'&&G.after<=0)backToLineup();
 }
 function finishWave(){
-  const sc=Math.floor(G.score);G.total+=sc;
-  G.card={sc,best:sc>G.bestWave,reason:G.reason||''};
+  const avg=G.ft>1?G.fsum/G.ft:0,grade=avg>.85?'S':avg>.65?'A':avg>.42?'B':avg>.2?'C':'D';
+  const fame=1+Math.max(0,-G.wind)*.4+(ride&&ride.K===3?.3:0),sc=Math.floor(G.score*fame);G.total+=sc;
+  G.card={sc,best:sc>G.bestWave,reason:G.reason||'',grade,line:G.line.slice(),fame};
   if(sc>G.bestWave){G.bestWave=sc;store.set('best3p',sc)}
-  G.mode='card';G.after=2.6;G.crashAt=null;
+  G.mode='card';G.after=3.6;G.crashAt=null;
 }
 function backToLineup(){
   ride=null;s=null;G.card=null;G.score=0;G.mode='paddle';G.fade=1;G.reason='';
@@ -406,6 +434,7 @@ function startRide(){
   const w=ride;G.waves++;
   if(!w.broke){w.broke=true;w.cx=Math.min(w.peak,P.x-14);w.peak=w.cx;sfxBoom();netSend({t:'b',i:w.id,cx:w.cx})}
   else if(!Net.on&&P.x-w.cx<14)w.cx=P.x-14;                                    // arrancás con margen delante de la rompiente
+  G.flow=.15;G.bestTube=0;G.fsum=0;G.ft=0;G.line=[];G.seen={};G.tubeC=0;msg(KINDS[w.K||0].n,1.8);
   G.vc=w.vc*ZS;G.curlX=w.cx*ZS;G.score=0;G.combo=0;G.tube=0;G.inTube=false;G.bestTrick=null;G.bestTrickPts=0;
   const x=P.x*ZS,H=waveH(x),fr=clamp(Math.exp(-w.u*w.u/(w.lf*w.lf)),.2,.8);
   const v0=G.vc/ZS*1.15;
@@ -421,18 +450,33 @@ function stepRide(dt){
   if(G.mode!=='ride')return;
   const d=s.x-G.curlX,flats=!s.air&&s.y>BASE-22;
   G.mult=flats?1:d<T.tube?4:d<T.zone3?3:d<T.zone2?2:1;
-  if(!s.air)G.score+=s.v*dt*.06*G.mult;
+  if(!s.air)G.score+=s.v*dt*.06*G.mult*(1+G.flow*2);
   const nowTube=d<T.tube&&!s.air&&!flats;
-  if(nowTube){G.tube+=dt;G.inTube=true}else if(G.inTube)endTube();
+  if(nowTube){G.tube+=dt;G.inTube=true;G.tubeC=Math.min(1,G.tubeC+dt/(w.K===1?8:6))}else if(G.inTube)endTube();
+  if(!G.inTube)G.tubeC=Math.max(0,G.tubeC-dt*.6);
+  if(G.inTube&&G.tubeC>=1){G.swallow=(G.swallow||0)+dt;G.shake=Math.max(G.shake,.35);if(G.swallow>2){G.swallow=0;return wipe('El tubo se cerró con vos adentro.')}}else G.swallow=0;
+  const fH=clamp((BASE-s.y)/(BASE-lipY(s.x)),0,1);
+  if(!s.air){
+    const carve=Math.abs(s.w)>.7&&s.slip<.28,gain=(carve?.1+.16*fH:0)+(s.v>G.vc*1.05?.05:0)+(d<T.zone2?.1:0);
+    const loss=(s.slip>.4?.5:0)+(Math.abs(s.w)<.25?.13:0)+(s.v<G.vc*.85?.3:0)+(input.avg<0?.2:0);
+    G.flow=clamp(G.flow+(gain-loss)*dt,0,1);G.fsum+=G.flow*dt;G.ft+=dt;
+  }
+  s.lt=(s.lt||0)+dt;if(s.lt>.2){s.lt=0;G.line.push([s.x,s.air?1.1:fH,G.flow])}
+  if(w.cx2!==null&&!s.passed&&s.x/ZS>w.cx2-1){
+    if(s.air||(fH>.7&&s.v>G.vc*.95)){s.passed=true;trick(s.air?'Volaste la sección':'Floater en la sección',800)}
+    else if(s.x/ZS>w.cx2+1)return wipe('La sección te cerró encima.');
+  }
+  if(w.cx2!==null&&w.cx2-w.cx<2&&s.x/ZS<w.cx2+1)return wipe('La ola cerró con vos adentro.');
   if(d<T.killD)wipe('La ola te pasó por encima.');
   else if(w.z>T.zEnd){if(G.inTube)endTube();G.reason='La ola se terminó.';finishWave()}
-  if(Math.random()<.5){const q=rideP();trail.push({x:q.x,y:q.y,z:q.z,t:G.t});if(trail.length>70)trail.shift()}
+  if(Math.random()<.5){const q=rideP();trail.push({x:q.x,y:q.y,z:q.z,t:G.t,fl:G.flow});if(trail.length>90)trail.shift()}
 }
 /* La cara de la ola en este punto: inclinación y agua que sube */
 function faceAt(xm,f,w){
   const d=xm-w.cx,H=Math.max(1,w.a*env(xm,w)),pocket=1-sstep(6,55,d);
   const slope=lerp(.5,1.02,pocket)*(.22+.85*Math.pow(clamp(f,0,1),1.25));          // más alto y más cerca del tubo, más parada
-  return{H,slope,len:H*1.7,flow:lerp(3,6.2,pocket)*(.25+.75*f)*Math.min(1,H/3),pocket};
+  const K=KINDS[w.K||0],bowl=1+.22*Math.sin(xm*.085+(w.ph||0));                    // la cara cambia: tramos con más y menos fuerza
+  return{H,slope:slope*(1+.08*Math.sin(xm*.06+(w.ph||0)*2)),len:H*1.7,flow:lerp(3,6.2,pocket)*(.25+.75*f)*Math.min(1,H/3)*K.flow*bowl*(1+G.wind*.08),pocket};
 }
 function stepFace(dt){
   const w=ride,xm=s.x/ZS,lip=lipY(s.x),hu=BASE-lip,f=clamp((BASE-s.y)/hu,0,1),F=faceAt(xm,f,w);
@@ -460,7 +504,9 @@ function stepFace(dt){
   s.w+=(wT-s.w)*Math.min(1,T.yawResp*dt);
   s.th=wrap(s.th+s.w*dt);
   // fuerzas
-  const grip=lerp(T.gripFlat,T.gripRail,clamp(Math.abs(s.roll)*1.5+.25,0,1))*(1-.78*piv);
+  const chopK=Math.max(0,-G.wind);                                                 // viento en contra: agua picada, menos agarre
+  const grip=lerp(T.gripFlat,T.gripRail,clamp(Math.abs(s.roll)*1.5+.25,0,1))*(1-.78*piv)*(1-.28*chopK);
+  if(chopK)s.pu+=Math.sin(G.t*11+xm*1.3)*2.4*chopK*dt;
   const brake=Math.max(0,-av),gas=Math.max(0,av);
   const dragT=(T.dragQ*Math.abs(vt)+T.dragL)*vt*(1-.45*gas)+brake*T.brakeTail*vt;
   let ax=-dragT*ct,au=dragT*sn;
@@ -488,6 +534,7 @@ function stepFace(dt){
   if(s.pumpCD<=0&&Math.abs(th0)<1.1&&((th0>0&&s.th<=0&&fr>.5)||(th0<0&&s.th>=0&&fr<.5))){
     if(fr>.5)s.hops=0;
     if(piv>.45&&fr<.5)trick('Snap',220);
+    {const k=1+.07*clamp(Math.abs(s.w)/3,0,1)*(fr>.5?1.2:.8);s.px*=k;s.pu*=k;s.compV+=2}       // salís del giro con la fuerza que cargaste
     s.pumpCD=.3;G.stats.pumps++;const q=rideP();spray(q.x,q.y,q.z,10+Math.round(piv*20),2.4,3.2);sfxCarve(.8+piv);
   }
   // el labio
@@ -502,6 +549,7 @@ function stepFace(dt){
       if(s.jumpHold>=T.jumpHold){s.jumpHold=0;launch();return}
     }else{s.jumpHold=0;if(s.pu>0)s.pu*=1-9*dt;s.px*=1-.5*dt;if(s.lipT>.3)s.pu=Math.min(s.pu,-1.5)}                      // sin insistir, frenás en el borde y caés
   }else{s.jumpHold=0;if(s.lipT>0){if(s.lipT>.55)trick('Floater',260);s.lipT=0}}
+  if(G.inTube&&f>.82){s.pu=Math.min(s.pu,-1.2);s.px*=1-.7*dt;G.tubeC=Math.min(1,G.tubeC+dt*.35);G.shake=Math.max(G.shake,.2)}   // te roza la cortina
   if(fr<.14&&s.v<G.vc*.42)s.wob=(s.wob||0)+dt;else s.wob=0;
   if(s.wob>1.2)return wipe('Te quedaste sin velocidad arriba y caíste.');
   const ath=Math.abs(s.th);
@@ -523,12 +571,15 @@ function burstLip(x,y,z,dir,p){
   for(let i=0;i<40+90*p&&parts.length<320;i++){const a=rnd(-.9,.9),v=rnd(3,9)*(.6+p);
     parts.push({x:x+rnd(-.7,.7),y:y+.3,z,vx:dir*(1.5+Math.sin(a)*v*.6),vy:rnd(3,8)*(.6+p),vz:-Math.cos(a)*v*.8,l:0,m:rnd(.5,1.2),r:rnd(.06,.22)})}
 }
+function varied(name){                 // repetir lo mismo rinde cada vez menos
+  const c=G.seen[name]||0;G.seen[name]=c+1;return 1/(1+.55*c);
+}
 function trick(name,base){
   G.combo=Math.min(G.combo+1,12);G.comboT=9;
-  const pts=Math.round(base*G.mult*(1+Math.max(0,G.combo-1)*.25));
+  const pts=Math.round(base*varied(name)*G.mult*(1+G.flow)*(1+Math.max(0,G.combo-1)*.25));
   G.score+=pts;if(pts>G.bestTrickPts){G.bestTrickPts=pts;G.bestTrick=name}
   pop(name+'  +'+pts.toLocaleString('es'),'#7ef0e0',28);sfxTrick(true,G.combo);
-  G.stats[name]=(G.stats[name]||0)+1;
+  G.stats[name]=(G.stats[name]||0)+1;G.flow=Math.min(1,G.flow+.12);
 }
 function launch(){
   s.air=true;s.v0=s.v;s.hops=(s.hops||0)+1;
@@ -568,18 +619,19 @@ function land(){
   else if(s.airT>.5){name='Aéreo';base=150}
   if(base){
     if(n>0){G.combo=Math.min(G.combo+1,12);G.comboT=9}
-    const pts=Math.round(base*(perfect?1.5:1)*G.mult*(1+Math.max(0,G.combo-1)*.25));
+    const pts=Math.round(base*varied(name)*(1+G.flow)*(perfect?1.5:1)*G.mult*(1+Math.max(0,G.combo-1)*.25));
     G.score+=pts;if(pts>G.bestTrickPts){G.bestTrickPts=pts;G.bestTrick=name}
     pop((perfect?'¡'+name+' perfecto!':name)+'  +'+pts.toLocaleString('es'),perfect?'#ffc94d':'#fbf8f2',perfect?30:26);
     sfxTrick(perfect,G.combo);
   }
 }
-function endTube(){
-  G.inTube=false;const t=G.tube;G.tube=0;if(t<.7)return;
+function endTube(){                    // cuanto más cerrado salís, más vale
+  G.inTube=false;const t=G.tube,close=G.tubeC;G.tube=0;if(t<.7)return;
   G.bestTube=Math.max(G.bestTube,t);
-  const pts=Math.round((t*t*420+t*200)*(1+G.combo*.25));
-  G.score+=pts;G.combo=Math.min(G.combo+1,12);G.comboT=9;
-  pop('Tubo '+t.toFixed(1)+' s  +'+pts.toLocaleString('es'),'#7ef0e0',32);sfxTrick(true,G.combo+1);
+  const escape=close>.62,pts=Math.round((t*t*260+t*200)*(1+G.combo*.25)*(1+G.flow)*(1+close*close*2));
+  G.score+=pts;G.combo=Math.min(G.combo+1,12);G.comboT=9;G.flow=Math.min(1,G.flow+.3);
+  pop((escape?'¡Escapaste! Tubo ':'Tubo ')+t.toFixed(1)+' s  +'+pts.toLocaleString('es'),escape?'#ffc94d':'#7ef0e0',32);sfxTrick(true,G.combo+1);
+  if(escape){const q=rideP();spray(q.x,q.y+.5,q.z,70,6,5);G.shake=Math.max(G.shake,.6);sfxSplash(.6)}
 }
 function wipe(reason){
   if(G.mode!=='ride')return;
@@ -672,7 +724,7 @@ function drawWorld(t){
   gl.enable(gl.DEPTH_TEST);gl.useProgram(prog.wave.p);gl.bindBuffer(gl.ARRAY_BUFFER,geo.vb);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,geo.ib);
   wArr.fill(0);xArr.fill(0);
   const list=swells.slice().sort((a,b)=>Math.abs(a.z-cam.e[2]+30)-Math.abs(b.z-cam.e[2]+30)).slice(0,MAXW);
-  list.forEach((w,i)=>{wArr[i*4]=w.z;wArr[i*4+1]=w.a;wArr[i*4+2]=w.b>0?w.cx:w.peak;wArr[i*4+3]=w.lf;xArr[i*4]=w.peak;xArr[i*4+1]=w.b});
+  list.forEach((w,i)=>{wArr[i*4]=w.z;wArr[i*4+1]=w.a;wArr[i*4+2]=w.b>0?w.cx:w.peak;wArr[i*4+3]=w.lf;xArr[i*4]=w.peak;xArr[i*4+1]=w.b;xArr[i*4+2]=w.cx2===null||w.cx2===undefined?1e6:w.cx2});
   u=prog.wave.u;gl.uniformMatrix4fv(u.vp,false,viewProj());gl.uniform3fv(u.eye,cam.e);
   gl.uniform2f(u.org,Math.round(cam.e[0]/2)*2,Math.round((cam.e[2]+6)/2)*2);
   const hw=swells.find(w=>w.hit&&G.t-w.hit.t<1.6);
@@ -829,7 +881,7 @@ function drawTrail(){
   for(let i=1;i<trail.length;i++){
     const a=trail[i-1],b=trail[i],age=(G.t-b.t)/1.4;if(age>1)continue;
     const p=project([a.x,a.y,a.z+(ride?ride.c*(G.t-a.t):0)]),q=project([b.x,b.y,b.z+(ride?ride.c*(G.t-b.t):0)]);if(!p||!q)continue;
-    ctx.strokeStyle='rgba(245,248,250,'+(.65*(1-age))+')';ctx.lineWidth=Math.max(1,q.k*.22*(1-age*.5));ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();
+    const fl=b.fl||0;ctx.strokeStyle='rgba('+Math.round(lerp(245,255,fl))+','+Math.round(lerp(248,201,fl))+','+Math.round(lerp(250,77,fl))+','+(.7*(1-age))+')';ctx.lineWidth=Math.max(1,q.k*(.2+.16*fl)*(1-age*.5));ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();
   }
 }
 function drawRemotes(t){
@@ -871,9 +923,12 @@ function drawRadar(vw,top){               // de arriba: las olas que vienen y d�
   ctx.restore();
   ctx.textAlign='left';ctx.textBaseline='top';
   label('Olas '+G.waves,mx,my+mh+5,17,'#fbf8f2',4);
+  label((G.wind>.25?'Viento de tierra':G.wind<-.25?'Viento del mar':'Viento suave')+' · marea '+(G.tide>.25?'alta':G.tide<-.25?'baja':'media'),mx,my+mh+26,13.5,'#fbf8f2',3);
+  ctx.fillStyle='rgba(20,42,68,.65)';ctx.fillRect(mx,my+mh+46,mw*.5,7);ctx.fillStyle=G.energy>.3?'#7ef0e0':'#ff6b4a';ctx.fillRect(mx,my+mh+46,mw*.5*G.energy,7);
+  label('Energía',mx+mw*.5+8,my+mh+42,13,'#fbf8f2',3);
   ctx.textAlign='right';
   const nx=swells.filter(w=>w.z<P.z-4).sort((a,b)=>b.z-a.z)[0];
-  if(nx)label('Ola a '+Math.round(P.z-nx.z)+' m · '+nx.a.toFixed(1)+' m alto',mx+mw,my+mh+6,15,'#fbf8f2',4);
+  if(nx)label(KINDS[nx.K||0].n+' · '+nx.a.toFixed(1)+' m · a '+Math.round(P.z-nx.z)+' m',mx+mw,my+mh+6,15,'#fbf8f2',4);
   ctx.textAlign='center';
 }
 function drawMap(t,vw,top){
@@ -900,7 +955,8 @@ function drawMap(t,vw,top){
   label('×'+G.mult,mx+20,my+mh+6,22,G.mult===4?'#ff8f75':G.mult===3?'#ffc94d':'#fbf8f2');
   label(spd+' km/h',mx+mw/2,my+mh+4,25,s.v>=G.vc*T.jumpMin?'#7ef0e0':'#fbf8f2');
   ctx.textAlign='right';label('Ola a '+m+' m',mx+mw-2,my+mh+9,14,'#fbf8f2',4);
-  if(G.combo>1){ctx.textAlign='left';label('Combo ×'+G.combo,mx,my+mh+32,18,'#7ef0e0',4)}
+  ctx.fillStyle='rgba(20,42,68,.65)';ctx.fillRect(mx,my+mh+33,mw,7);ctx.fillStyle=G.flow>.6?'#ffc94d':'#7ef0e0';ctx.fillRect(mx,my+mh+33,mw*G.flow,7);
+  ctx.textAlign='left';label('Flow'+(G.combo>1?'  ·  Combo ×'+G.combo:''),mx,my+mh+43,14,G.flow>.6?'#ffc94d':'#fbf8f2',3);
 }
 function drawStick(){
   const R=T.footRange;
@@ -921,7 +977,12 @@ function drawHud(t){
     const d=s.x-G.curlX;
     if(s.jumpHold>0){const a=s.jumpHold/T.jumpHold;ctx.strokeStyle='#ffc94d';ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();ctx.arc(vw/2,vh*.66,24,-1.57,-1.57+a*6.283);ctx.stroke();
       ctx.textBaseline='middle';label('Sostené',vw/2,vh*.66+42,18,'#ffc94d',4);ctx.textBaseline='top'}
-    if(G.inTube&&G.tube>.25)label('TUBO '+G.tube.toFixed(1),vw/2,vh*.27,42,'#7ef0e0');
+    if(G.inTube&&G.tube>.25){
+      label('TUBO '+G.tube.toFixed(1),vw/2,vh*.25,42,'#7ef0e0');
+      const bw=Math.min(240,vw*.56),bx=(vw-bw)/2,by=vh*.25+48;ctx.fillStyle='rgba(20,42,68,.65)';ctx.fillRect(bx,by,bw,9);
+      ctx.fillStyle=G.tubeC>.62?'#ff6b4a':'#ffc94d';ctx.fillRect(bx,by,bw*G.tubeC,9);
+      label(G.tubeC>.62?'¡Se cierra! Salí ahora':'La salida se cierra',vw/2,by+13,16,'#fbf8f2',4);
+    }
     if(d<190)label('¡Te alcanza! Bajá para agarrar velocidad',vw/2,vh*.34,Math.min(23,vw/18),'#ffc94d');
   }
   pops.forEach((p,i)=>{ctx.globalAlpha=Math.min(1,(1.4-p.l)*2.4);label(p.text,vw/2,vh*.4+i*34-p.l*20,Math.min(p.size,vw/15),p.col,5)});
@@ -952,11 +1013,19 @@ function drawHud(t){
     if(m)label(m,vw/2,vh*.84,Math.min(20,vw/22),'#fbf8f2',4);
   }
   if(G.mode==='card'&&G.card){
-    const c=G.card,cy=vh*.42;ctx.fillStyle='rgba(20,42,68,.62)';panel(vw/2-150,cy-64,300,128);ctx.fill();
+    const c=G.card,cy=vh*.4,pw=Math.min(320,vw-32),px=vw/2-pw/2;ctx.fillStyle='rgba(20,42,68,.7)';panel(px,cy-104,pw,214);ctx.fill();
     ctx.textBaseline='middle';
-    label(c.best&&c.sc>0?'¡Tu mejor ola!':'Ola terminada',vw/2,cy-36,24,'#ffc94d');
-    label(c.sc.toLocaleString('es')+' puntos',vw/2,cy,32,'#fbf8f2');
-    ctx.font='15px '+FONT;label(c.reason,vw/2,cy+36,Math.min(15,vw/28),'#fbf8f2',3);
+    label(c.best&&c.sc>0?'¡Tu mejor ola!':'Ola terminada',vw/2,cy-82,22,'#ffc94d');
+    label(c.sc.toLocaleString('es')+' puntos',vw/2,cy-52,28,'#fbf8f2');
+    label('Estilo '+c.grade+(c.fame>1.05?'  ·  condiciones ×'+c.fame.toFixed(1):''),vw/2,cy-24,17,'#7ef0e0',4);
+    if(c.line.length>2){                  // el dibujo de tu línea en la ola
+      const x0=c.line[0][0],x1=c.line[c.line.length-1][0],bx=px+18,bw=pw-36,by=cy-6,bh=74,span=Math.max(1,x1-x0);
+      ctx.strokeStyle='rgba(251,248,242,.25)';ctx.lineWidth=1;ctx.strokeRect(bx,by,bw,bh);ctx.lineCap='round';ctx.lineWidth=3;
+      for(let i=1;i<c.line.length;i++){const a=c.line[i-1],b=c.line[i],fl=b[2];
+        ctx.strokeStyle='rgb(255,'+Math.round(lerp(255,190,fl))+','+Math.round(lerp(255,60,fl))+')';ctx.beginPath();
+        ctx.moveTo(bx+bw*(a[0]-x0)/span,by+bh-bh*Math.min(1.1,a[1])*.86-4);ctx.lineTo(bx+bw*(b[0]-x0)/span,by+bh-bh*Math.min(1.1,b[1])*.86-4);ctx.stroke()}
+    }
+    label(c.reason,vw/2,cy+88,Math.min(14,vw/28),'#fbf8f2',3);
     ctx.textBaseline='top';
   }
   ctx.textBaseline='alphabetic';
@@ -1127,7 +1196,7 @@ function clientRecv(d){
   Net.lastHost=G.t;
   if(d.t==='hi'){Net.color=d.c;applySwells(d.w);if(G.mode==='menu')start();netLoop();msg('Entraste a la playa',3)}
   else if(d.t==='s'){if(d.i!==Net.id)playerMsg(d)}
-  else if(d.t==='w')applySwells(d.w);
+  else if(d.t==='w'){applySwells(d.w);G.windT=d.wind;G.tideT=d.tide}
   else if(d.t==='h')hitMsg(d);
   else if(d.t==='c'){if(d.to===Net.id)collided(d.n)}
   else if(d.t==='bye')delete Net.players[d.i];
@@ -1138,12 +1207,12 @@ function playerMsg(d){
   r.tp=[d.x,d.y,d.z];r.f=d.f;r.n=d.nv;r.m=d.m;r.l=d.l;r.cr=d.cr;r.a=d.a;r.b=d.b;r.sp=d.sp;r.c=d.c;r.name=d.nm;r.vel=d.vel;r.seen=G.t;
   if(!r.pos)r.pos=r.tp.slice();
 }
-function swellData(){return swells.map(w=>({i:w.id,z:w.z,a:w.A0,p:w.peak,zb:w.zb,c:w.c,vc:w.vc,br:w.broke,b:w.b,cx:w.cx}))}
+function swellData(){return swells.map(w=>({i:w.id,z:w.z,a:w.A0,p:w.peak,zb:w.zb,c:w.c,vc:w.vc,br:w.broke,b:w.b,cx:w.cx,K:w.K,ph:w.ph,sec:w.sec,cx2:w.cx2}))}
 function applySwells(list){
   const seen={};
   for(const d of list){
     seen[d.i]=1;let w=swells.find(q=>q.id===d.i);
-    if(!w){w={id:d.i,z:d.z,A0:d.a,peak:d.p,zb:d.zb,broke:d.br,b:d.b,cx:d.cx,a:0,lf:14,c:d.c,vc:d.vc};updateSwell(w,0);swells.push(w);continue}
+    if(!w){w={id:d.i,z:d.z,A0:d.a,peak:d.p,zb:d.zb,broke:d.br,b:d.b,cx:d.cx,a:0,lf:14,c:d.c,vc:d.vc,K:d.K,ph:d.ph,sec:d.sec,cx2:d.cx2};updateSwell(w,0);swells.push(w);continue}
     w.z+=(d.z-w.z)*(Math.abs(d.z-w.z)>3?1:.3);if(d.br&&!w.broke){w.broke=true;sfxBoom()}
     if(d.br){w.cx+=(d.cx-w.cx)*(Math.abs(d.cx-w.cx)>6?1:.3);w.peak=d.p}
   }
@@ -1164,7 +1233,7 @@ function netLoop(){
     const q=myState(),sp=G.mode==='ride'&&s?s.v/ZS:P.v;
     netSend({t:'s',i:Net.id,x:+q.x.toFixed(2),y:+q.y.toFixed(2),z:+q.z.toFixed(2),f:q.f.map(v=>+v.toFixed(2)),nv:q.nv.map(v=>+v.toFixed(2)),m:q.m,l:+q.l.toFixed(2),cr:+q.cr.toFixed(2),a:+P.armL.toFixed(2),b:+P.armR.toFixed(2),sp:+sp.toFixed(1),c:Net.color,nm:Net.name,vel:G.myVel||[0,0,0]});
     if(Net.host&&(G.mode==='pause'||document.hidden))updateSea(.08);    // las olas siguen para los demás
-    if(Net.host&&++n%12===0)netBroadcast({t:'w',w:swellData()});
+    if(Net.host&&++n%12===0)netBroadcast({t:'w',w:swellData(),wind:G.windT,tide:G.tideT});
   },80);
 }
 function collided(name){

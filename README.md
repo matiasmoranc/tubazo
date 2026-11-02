@@ -36,6 +36,10 @@ En la PC: ← → remar, ↑ ↓ mirar, ↑ pararse. En la ola: flechas apuntan,
 
 La tabla se mueve con fuerzas reales: gravedad según la inclinación de la cara, agua que sube por la ola y canto que agarra. Por eso hay una línea de trim: alto te adelantás, abajo te alcanza la ola. La inclinación del cuerpo dobla la tabla, la cola la hace derrapar y frenar te mete al tubo.
 
+## Sesión
+
+Cada ola es distinta: pared larga, tubera, con sección o bomba. El viento cambia la calidad del agua, la marea mueve dónde rompe y remar gasta energía. Las curvas limpias llenan el flow, encienden tu estela y multiplican los puntos. Al terminar ves el dibujo de tu línea y tu nota de estilo. En el tubo la salida se va cerrando: cuanto más tarde salís, más vale, pero te puede tragar.
+
 ## Maniobras
 
 Romper el labio, derrapes de cola, cutback, rebote en la espuma, snap, floater, tubo, aéreos y giros en el aire.
