@@ -33,6 +33,10 @@ Comparten las olas, se ven en el agua y, si chocan fuerte, se caen los dos. La c
 
 En la PC: ← → remar o dirección, ↑ ↓ mirar, Espacio pasar por abajo, ↑ pararse, A y D cola, ↑ ↓ peso, P pausa.
 
+## Física
+
+La tabla se mueve con fuerzas reales: gravedad según la inclinación de la cara, agua que sube por la ola y canto que agarra. Por eso hay una línea de trim: alto te adelantás, abajo te alcanza la ola. La inclinación del cuerpo dobla la tabla, la cola la hace derrapar y frenar te mete al tubo.
+
 ## Maniobras
 
 Romper el labio, derrapes de cola, cutback, rebote en la espuma, snap, floater, tubo, aéreos y giros en el aire.

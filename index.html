@@ -107,7 +107,7 @@ void main(){
     float b=uX[i].y;
     if(b>.01){
       float pitch=(1.-smoothstep(7.,30.,d))*step(-4.,d)*b;        // el labio se tira hacia adelante
-      dz+=pitch*a*1.05*smoothstep(.35,1.,q);
+      dz+=pitch*a*.3*smoothstep(.35,1.,q);
       float wall=step(d,1.5+2.5*sin(u*.5+time*2.))*b;             // espuma detrás de la rompiente
       foam=max(foam,wall*smoothstep(-8.,-3.,u)*(1.-smoothstep(lf+5.,lf+13.,u)));
       foam=max(foam,wall*.55*exp(min(u+8.,0.)/16.)*step(u,lf));
@@ -120,6 +120,23 @@ void main(){
   vN=normalize(vec3(-hx/(2.*e),1.,-hz/(2.*e)));
   vec3 pos=vec3(x,h,z+dz);
   vP=pos;vFoam=foam;vH=big;vDist=length(pos-eye);
+  gl_Position=vp*vec4(pos,1.);
+}
+</script>
+<script id="vsLip" type="x-shader">
+attribute vec2 p;
+uniform mat4 vp; uniform vec3 eye; uniform vec4 uL;        // rompiente x, cresta z, altura, largo del frente
+uniform float time;
+varying vec3 vP,vN; varying float vFoam,vH,vDist;
+void main(){                                               // la cortina del labio: sale de la cresta y cae hasta el agua
+  float d=-1.+p.x*33.,x=uL.x+d,t=p.y;
+  float H=uL.z*(1.-.5*smoothstep(20.,170.,d)),Zf=H*2.1;
+  float end=mix(1.,.2,smoothstep(1.,26.,d)),u=t*end;
+  float wob=.1*sin(x*.8+time*3.)*u;                       // el labio sale tirado hacia adelante y cae por su peso
+  vec3 pos=vec3(x,H+H*.42*sin(u*3.14)-H*u*u*.98+wob,uL.y+uL.w*.1+Zf*u);
+  vN=normalize(vec3(0.,Zf,2.*H*u-.5*H));
+  vFoam=max(smoothstep(.72,1.,u/end)*.9,1.-smoothstep(-1.,2.,d));
+  vH=-1.-u;vP=pos;vDist=length(pos-eye);
   gl_Position=vp*vec4(pos,1.);
 }
 </script>
@@ -155,11 +172,12 @@ void main(){
   float drawn=smoothstep(.54,.74,fbm(vec2(w.x*1.7,w.y*.3-time*.35)));  // vetas que el agua dibuja al subir por la cara
   c=mix(c,vec3(.34,.5,.66),drawn*fr*.2*near);
   c=mix(c,sky,fres*.62);
+  if(vH<0.)c=mix(vec3(.05,.24,.34),vec3(.22,.56,.6),clamp(-vH-1.,0.,1.)*.9)+vec3(.1,.13,.14)*cord*.6;   // adentro del tubo
   float wind=smoothstep(.56,.72,fbm(uv*vec2(.7,2.4)+vec2(-time*.2,time*.5)));
   c=mix(c,vec3(.62,.68,.8),wind*.18);
   float rid=1.-abs(fbm(w*.75+vec2(time*.05,time*.5))*2.-1.),rid2=1.-abs(fbm(w*2.+vec2(-time*.1,time*.8))*2.-1.);
   float lace=clamp(smoothstep(.72,.97,rid)+.7*smoothstep(.78,.98,rid2),0.,1.);    // espuma en hilos, no en manchas
-  float foam=clamp(vFoam*vFoam*1.5+vFoam*lace*1.1,0.,1.);
+  float foam=clamp(vFoam*vFoam*1.5+vFoam*lace*1.1,0.,1.)*(vH<0.?.8:1.);
   c=mix(c,vec3(.95,.96,.97)-.14*(1.-n1),foam);
   vec3 fog=vec3(.87,.85,.88);
   gl_FragColor=vec4(mix(c,fog,smoothstep(120.,330.,vDist)),1.);
@@ -194,10 +212,10 @@ void main(){
 /* ---------- Ajustes ---------- */
 const STEP=1/120, BASE=440, METER=40, ZS=38, MAXW=4;      // ZS: unidades de juego por metro
 const T={
-  gravDown:300, gravUp:165, drag:.2, baseSpeed:.8, carveRate:3.3, carveBack:2.45, carveResp:8,
-  angIdle:.4, pivotSteer:.7, pivotRate:2.4, pivotDrag:150, gasFront:80, brakeBack:260,
+  g:9.8, rollRate:7, carve:2.9, pivotYaw:3.2, yawResp:9, weather:1.2, gripFlat:2.2, gripRail:7.5, dragQ:.012, dragL:.08, fall:.8, brakeTail:1.1, gasThrust:.7, pumpK:3, vMax:17, compK:70, compC:11,
+  angIdle:.4, pivotSteer:.7, pivotRate:2.4, pivotDrag:150, 
   faceY:.5, pumpBoost:28,
-  launchAng:-.3, jumpMin:1.06, jumpFull:150, popKick:240, gravAir:860, jumpHold:.22, jumpIntent:.45, gripRail:13, gripTail:2, slipDrag:320,
+  launchAng:-.3, jumpMin:1.06, jumpFull:150, gravAir:494, jumpHold:.22, jumpIntent:.45, 
   spin:11, spinOn:.3, spinArm:.25, landPerfect:.42, landOk:1.05,
   hitDist:1.7, hitSpeed:3.5, tube:380, zone3:520, zone2:760, killD:14, footRange:70,
   // remada y olas
@@ -229,7 +247,7 @@ const axis={x:0,y:-1,base:0,on:false};
 /* ---------- Olas ---------- */
 function newSwell(){
   const big=Math.random();
-  swells.push({id:++G.sid,z:T.zSpawn,A0:lerp(3.6,6.4,big*big),peak:lineupX()+rnd(-45,45),zb:T.zBreak+rnd(-10,6),broke:false,b:0,cx:0,a:0,lf:14,c:T.waveC*rnd(.94,1.06),vc:rnd(7,8.1)});
+  swells.push({id:++G.sid,z:T.zSpawn,A0:lerp(3.6,6.4,big*big),peak:lineupX()+rnd(-45,45),zb:T.zBreak+rnd(-10,6),broke:false,b:0,cx:0,a:0,lf:14,c:T.waveC*rnd(.94,1.06),vc:rnd(6.5,7.4)});
 }
 function lineupX(){if(!Net.on)return P.x;let t=P.x,n=1;for(const id in Net.players){const r=Net.players[id];if(r.pos){t+=r.pos[0];n++}}return t/n}
 function updateSwell(w,dt){
@@ -368,7 +386,7 @@ function stepPopup(dt){
   G.popup+=dt/.42;const w=ride;P.z=w.z+w.u;P.y=seaH(P.x,P.z);
   if(G.popup>=1)startRide();
 }
-function failTakeoff(r){G.waves++;ride=null;crash(P.x,P.y,P.z,r);G.score=0}
+function failTakeoff(r){G.waves++;ride=null;s=null;crash(P.x,P.y,P.z,r);G.score=0}
 function crash(x,y,z,reason){
   G.mode='wipe';G.reason=reason;G.ts=.55;G.shake=1;G.flash=.8;G.after=2;G.crashAt={x,y,z,t:0};
   spray(x,y+.3,z,50,3.5,5);sfxSplash(1);hudBtns();pop(reason,'#fbf8f2',20);
@@ -401,8 +419,9 @@ function startRide(){
   else if(!Net.on&&P.x-w.cx<14)w.cx=P.x-14;                                    // arrancás con margen delante de la rompiente
   G.vc=w.vc*ZS;G.curlX=w.cx*ZS;G.score=0;G.combo=0;G.tube=0;G.inTube=false;G.bestTrick=null;G.bestTrickPts=0;
   const x=P.x*ZS,H=waveH(x),fr=clamp(Math.exp(-w.u*w.u/(w.lf*w.lf)),.2,.8);
-  s={x,y:BASE-fr*H,th:.5,v:G.vc*1.2,air:false,vx:0,vy:0,spinA:0,spinV:0,total:0,airT:0,pumpCD:0,kelp:0,prevTh:.5,hops:0,armed:false,v0:0,w:0,lean:0,
-     rebound:0,backed:false,lipT:0,cutT:0,jumpHold:0,crouch:.8,tv:.5,lipCD:0};
+  const v0=G.vc/ZS*1.15;
+  s={x,y:BASE-fr*H,th:.35,v:v0*ZS,air:false,vx:0,vy:0,spinA:0,spinV:0,total:0,airT:0,pumpCD:0,prevTh:.35,hops:0,armed:false,v0:0,w:0,lean:0,
+     rebound:0,backed:false,lipT:0,cutT:0,jumpHold:0,crouch:.8,tv:.35,lipCD:0,px:v0,pu:-1.5,roll:0,comp:.4,compV:0,slip:0,wob:0};
   G.mode='ride';hudBtns();trail=[];
   if(!G.seenRide){G.seenRide=true;msg('Bajá desde arriba para ganar velocidad',2.5)}
 }
@@ -420,67 +439,82 @@ function stepRide(dt){
   else if(w.z>T.zEnd){if(G.inTube)endTube();G.reason='La ola se terminó.';finishWave()}
   if(Math.random()<.5){const q=rideP();trail.push({x:q.x,y:q.y,z:q.z,t:G.t});if(trail.length>70)trail.shift()}
 }
+/* La cara de la ola en este punto: inclinación y agua que sube */
+function faceAt(xm,f,w){
+  const d=xm-w.cx,H=Math.max(1,w.a*env(xm,w)),pocket=1-sstep(6,55,d);
+  const slope=lerp(.5,1.02,pocket)*(.22+.85*Math.pow(clamp(f,0,1),1.25));          // más alto y más cerca del tubo, más parada
+  return{H,slope,len:H*1.7,flow:lerp(3,6.2,pocket)*(.25+.75*f)*Math.min(1,H/3),pocket};
+}
 function stepFace(dt){
-  const l=lipY(s.x),h=BASE-l,d=s.x-G.curlX,st=input.steer,av=input.avg,piv=Math.abs(input.pivot);
-  s.prevTh=s.th;
-  const kv=clamp(340/s.v,.72,1.15),boost=1+T.pivotRate*piv*.42;     // a más velocidad, curva más abierta
-  const keep=1-sstep(.85,1,Math.abs(st)),wMax=2.9*boost;
-  let wT=clamp(-st*T.carveRate*boost*kv,-wMax,wMax)+keep*clamp(T.carveBack*wrap(T.angIdle-s.th),-3.3,3.3);
-  if(s.rebound>0){s.rebound-=dt;wT=(wrap(s.th)>0?-1:1)*5.5;s.x+=G.vc*dt}
-  s.w+=(wT-s.w)*Math.min(1,T.carveResp*dt);
+  const w=ride,xm=s.x/ZS,lip=lipY(s.x),hu=BASE-lip,f=clamp((BASE-s.y)/hu,0,1),F=faceAt(xm,f,w);
+  const st=input.steer,av=input.avg,piv=Math.abs(input.pivot),d=s.x-G.curlX;
+  // cuerpo: la inclinación pone el canto en el agua
+  s.roll+=(clamp(st,-1.3,1.3)*.9-s.roll)*Math.min(1,T.rollRate*dt);
+  const th0=s.th,ct=Math.cos(s.th),sn=Math.sin(s.th);                               // adelante de la tabla: (ct,-sn) en (largo, cara)
+  const rx=s.px,ru=s.pu-F.flow;                                                     // velocidad contra el agua, que sube
+  const vt=rx*ct-ru*sn,vn=rx*sn+ru*ct,speed=Math.hypot(rx,ru);
+  // giro: la tabla dobla por el canto y necesita velocidad; la cola pivotea
+  let wT=-s.roll*T.carve*clamp(Math.abs(vt)/7,.2,1.25)*Math.sign(vt||1)-input.pivot*T.pivotYaw;
+  const flowAng=wrap(Math.atan2(-s.pu,s.px)-s.th);
+  wT+=flowAng*T.weather*(1-Math.min(1,Math.abs(s.roll)*1.6));                       // suelta, la tabla se alinea con su marcha
+  wT+=T.fall*F.slope*Math.cos(s.th)*2*(1-Math.min(1,Math.abs(s.roll)*2));              // suelta, la punta cae hacia abajo de la ola
+  if(s.rebound>0){s.rebound-=dt;wT=(wrap(s.th)>0?-1:1)*5.5;s.px=Math.max(s.px,G.vc/ZS*1.15)}
+  s.w+=(wT-s.w)*Math.min(1,T.yawResp*dt);
   s.th=wrap(s.th+s.w*dt);
-  const grip=lerp(T.gripRail,T.gripTail,piv),slipA=wrap(s.th-s.tv),slip=Math.abs(slipA);   // la tabla apunta para un lado y sigue viajando para otro hasta agarrar
-  s.tv=wrap(s.tv+slipA*Math.min(1,grip*dt));
-  s.lean+=(clamp(s.w/3,-1,1)*clamp(s.v/360,.5,1.2)-s.lean)*Math.min(1,6*dt);
-  s.crouch+=((input.avg<0?.9:.3+Math.abs(s.lean)*.5)-s.crouch)*Math.min(1,5*dt);
-  const flats=s.y>BASE-22,up=clamp((BASE-s.y)/h,0,1),force=taper(d/ZS);
-  const sv=Math.sin(s.tv),slope=sv>0?T.gravDown*(.18+1.5*up)*force:T.gravUp;
-  let a=slope*sv-T.drag*(s.v-G.vc*T.baseSpeed)-slip*slip*T.slipDrag;
-  if(flats)a-=60;
-  a-=Math.max(0,d-1150)*.38;
-  a+=av>0?av*T.gasFront:av*T.brakeBack;
-  a-=piv*T.pivotDrag;
-  if(s.y>BASE-6)a-=s.v*.5;
-  s.v=clamp(s.v+a*dt,G.vc*.62,640);
+  // fuerzas
+  const grip=lerp(T.gripFlat,T.gripRail,clamp(Math.abs(s.roll)*1.5+.25,0,1))*(1-.78*piv);
+  const brake=Math.max(0,-av),gas=Math.max(0,av);
+  const dragT=(T.dragQ*Math.abs(vt)+T.dragL)*vt*(1-.45*gas)+brake*T.brakeTail*vt;
+  const latF=-grip*vn;
+  let ax=-dragT*ct+latF*sn,au=dragT*sn+latF*ct;
+  au-=T.g*Math.sin(F.slope);                                                        // la gravedad te baja, y más donde es más parada
+  if(vt>0){const push=gas*T.gasThrust+T.pumpK*Math.abs(s.w)*f*(.5+.5*F.pocket);ax+=push*ct;au-=push*sn}   // carga en el giro y empuje de la ola
+  s.px=clamp(s.px+ax*dt,-14,T.vMax);s.pu=clamp(s.pu+au*dt,-T.vMax,T.vMax);
+  s.x+=s.px*ZS*dt;
+  s.y-=s.pu/F.len*hu*dt;
+  s.v=Math.hypot(s.px,s.pu)*ZS;s.tv=Math.atan2(-s.pu,s.px);
+  s.slip=Math.abs(vn)/(speed+1);
+  // cuerpo elástico: compresión con la fuerza del giro
+  const load=Math.abs(s.w)*Math.max(0,vt)*.09;
+  s.compV+=(T.compK*(load-s.comp)-T.compC*s.compV)*dt;s.comp=clamp(s.comp+s.compV*dt,-.3,1.2);
+  s.lean=s.roll*clamp(speed/9,.45,1.15);
+  s.crouch+=(clamp(.3+(brake?.5*brake:0)+piv*.25,0,1)-s.crouch)*Math.min(1,5*dt);
   const c=Math.cos(s.tv);
-  s.x+=s.v*(c>=0?.5+.5*c:.5+1.3*c)*dt;
-  s.y+=s.v*sv*T.faceY*dt;
+  // abajo de la ola
+  if(s.y>BASE+10){s.y=BASE+10;if(s.pu<0)s.pu*=.2;s.px*=1-.8*dt}
+  // bombeo: giros bien hechos
   s.pumpCD-=dt;
-  if(s.pumpCD<=0){
-    const frac=(s.y-l)/h;
-    if(frac>.45)s.hops=0;
-    if(Math.abs(s.th)<1&&((s.prevTh>0&&s.th<=0&&frac>.5)||(s.prevTh<0&&s.th>=0&&frac<.5))){
-      if(piv>.45&&frac<.5)trick('Snap',220);
-      s.v+=T.pumpBoost*(.12+1.1*up)*force*clamp(.5+Math.abs(s.w)/3,.5,1.3)*(1+piv*.8);s.pumpCD=.28;G.stats.pumps++;
-      const q=rideP();spray(q.x,q.y,q.z,10+Math.round(piv*20),2.4,3.2);sfxCarve(.8+piv);
-    }
+  const fr=(s.y-lip)/hu;
+  if(s.pumpCD<=0&&Math.abs(th0)<1.1&&((th0>0&&s.th<=0&&fr>.5)||(th0<0&&s.th>=0&&fr<.5))){
+    if(fr>.5)s.hops=0;
+    if(piv>.45&&fr<.5)trick('Snap',220);
+    s.pumpCD=.3;G.stats.pumps++;const q=rideP();spray(q.x,q.y,q.z,10+Math.round(piv*20),2.4,3.2);sfxCarve(.8+piv);
   }
-  if(s.y>BASE+12)s.y=BASE+12;
-  if(s.y<l+8){
-    const pushing=Math.sin(s.th)<T.launchAng,intent=pushing&&(c>=0?st>T.jumpIntent:st<-T.jumpIntent);
+  // el labio
+  if(s.y<lip+8){
+    const rising=s.pu>.8,intent=rising&&(c>=0?st>T.jumpIntent:st<-T.jumpIntent);
     const can=s.v>=G.vc*T.jumpMin&&(d>T.tube||s.v>G.vc+50);
-    s.y=l+8;s.lipT+=dt;s.v-=70*dt;
     const turnBack=(c>=0?st<-.2:st>.2)||piv>.4;
-    if(turnBack&&s.v>G.vc*.82&&G.t>s.lipCD&&Math.sin(s.th)<.25){lipHit(c);return}
+    s.y=lip+8;s.lipT+=dt;
+    if(turnBack&&s.v>G.vc*.82&&G.t>s.lipCD&&s.pu>-1.5){lipHit(c);return}
     if(intent&&can){
-      s.jumpHold+=dt;s.w=0;s.th=c>=0?Math.max(s.th,-1.15):Math.min(s.th,-1.99);s.tv=s.th;
+      s.jumpHold+=dt;s.pu=Math.max(s.pu,1.5);
       if(s.jumpHold>=T.jumpHold){s.jumpHold=0;launch();return}
-    }else{
-      s.jumpHold=0;
-      if(pushing){const tg=c>=0?.12:wrap(Math.PI-.12);s.th=wrap(s.th+wrap(tg-s.th)*Math.min(1,9*dt));s.tv=s.th;s.w*=.8}
-    }
+    }else{s.jumpHold=0;if(s.pu>0)s.pu*=1-9*dt;s.px*=1-.5*dt}                      // sin insistir, frenás en el borde y caés
   }else{s.jumpHold=0;if(s.lipT>0){if(s.lipT>.55)trick('Floater',260);s.lipT=0}}
+  if(fr<.14&&s.v<G.vc*.42)s.wob=(s.wob||0)+dt;else s.wob=0;
+  if(s.wob>1.2)return wipe('Te quedaste sin velocidad arriba y caíste.');
   const ath=Math.abs(s.th);
   if(ath>2.1)s.backed=true;else if(s.backed&&ath<.7){s.backed=false;if(G.t>s.cutT){s.cutT=G.t+1.8;trick('Cutback',450)}}
-  if(c<0&&d<150&&s.rebound<=0){
-    s.rebound=.6;s.v=Math.max(s.v,G.vc*1.35);s.backed=false;G.shake=Math.max(G.shake,.45);
-    const q=rideP();spray(q.x,q.y,q.z,30,3,4);sfxSplash(.45);trick('Rebote',650);
+  if(s.px<0&&d<150&&s.rebound<=0){
+    s.rebound=.6;s.backed=false;G.shake=Math.max(G.shake,.45);
+    const q=rideP();spray(q.x,q.y,q.z,30,3,4);sfxSplash(.45);if(G.t>(s.rebT||0)){s.rebT=G.t+3;trick('Rebote',650)}
   }
-  if(Math.random()<Math.abs(s.w)*.09+slip*.9){const q=rideP();spray(q.x,q.y,q.z,1+Math.round(piv*2+slip*5),1.8+slip*3,2.6+slip*3)}
+  if(Math.random()<Math.abs(s.w)*.1+s.slip*1.6){const q=rideP();spray(q.x,q.y,q.z,1+Math.round(piv*2+s.slip*6),1.8+s.slip*4,2.6+s.slip*4)}
 }
 function lipHit(c){                      // le pegás al labio con un giro y lo rompés
   const power=clamp((s.v-G.vc*.82)/(G.vc*.6),.2,1),q=rideP(),dir=c>=0?1:-1;
-  s.lipCD=G.t+1;s.y=lipY(s.x)+14;s.w=dir*3.8;s.lipT=0;s.jumpHold=0;s.v*=.96;
+  s.lipCD=G.t+1;s.y=lipY(s.x)+14;s.w=dir*3.6;s.th=wrap(s.th+dir*.7);s.lipT=0;s.jumpHold=0;s.pu=-1.5;s.px*=.96;s.compV=3;
   ride.hit={x:q.x,t:G.t,p:power};netSend({t:'h',i:ride.id,x:q.x,p:power});
   burstLip(q.x,q.y,q.z,dir,power);
   G.shake=Math.max(G.shake,.55);sfxSplash(.6);trick('Rompiste el labio',Math.round(380+620*power));
@@ -498,9 +532,10 @@ function trick(name,base){
 }
 function launch(){
   s.air=true;s.v0=s.v;s.hops=(s.hops||0)+1;
-  const c=Math.cos(s.th),pw=clamp((s.v-G.vc*T.jumpMin)/T.jumpFull,0,1);
-  s.vx=c>=0?Math.max(G.vc*(s.hops>1?.6:.86),s.v*(.62+.38*c)):Math.max(-130,s.v*(.5+1.3*c));
-  s.vy=s.v*Math.sin(s.th)*(.45+.35*pw)-T.popKick*(.12+.88*pw)*Math.min(1,-Math.sin(s.th)/.65);
+  const pw=clamp((s.v-G.vc*T.jumpMin)/T.jumpFull,0,1);
+  s.vx=s.px*ZS;
+  s.vy=-(Math.max(s.pu,1)*.6+.8+2.4*pw)*ZS;                        // sale con su velocidad real más el empuje de las piernas
+  s.compV=-3;s.spin0=s.th;
   s.spinA=0;s.spinV=0;s.total=0;s.airT=0;s.armed=false;G.stats.launches++;
   const q=rideP();spray(q.x,q.y,q.z,24,3,4);sfxWhoosh();
 }
@@ -522,9 +557,10 @@ function land(){
   s.air=false;s.y=lipY(s.x)+8;s.spinA=0;s.w=0;
   if(err>T.landOk){wipe('Caíste cruzado. Centrá los dedos antes de tocar el agua.');return}
   if(rev)th=wrap(th+Math.PI);
-  s.th=th;s.tv=th;
+  s.th=th;s.tv=th;s.compV=4.5;s.roll=0;
   const perfect=err<T.landPerfect,n=Math.round(Math.abs(s.total)/Math.PI);
   s.v=Math.max(G.vc*(s.hops>1?.72:.8),s.v0*(perfect?(n>1?1.08:1):.85)*(s.hops>1?.8:1)*(rev?.8:1));
+  {const sp=s.v/ZS;s.px=Math.cos(th)*sp;s.pu=-Math.sin(th)*sp}
   const q=rideP();spray(q.x,q.y,q.z,perfect?26:14,3,3.4);sfxSplash(.35);G.shake=Math.max(G.shake,.3);
   perfect?G.stats.perfects++:G.stats.oks++;
   let name='',base=0;
@@ -553,8 +589,8 @@ function wipe(reason){
 function rideP(){
   const w=ride,xm=s.x/ZS,E=env(xm,w),H=Math.max(.5,w.a*E),f=clamp((BASE-s.y)/(BASE-lipY(s.x)),.05,.985);
   const u=w.lf*Math.sqrt(-Math.log(f)),over=Math.max(0,lipY(s.x)-s.y)/42*1.1;
-  const d=xm-w.cx,pitch=(1-sstep(7,30,d))*(d>=-4?1:0)*w.b,dz=pitch*H*1.05*sstep(.35,1,f);
-  const a=clamp(f*1.15,.05,1.15);
+  const d=xm-w.cx,pitch=(1-sstep(7,30,d))*(d>=-4?1:0)*w.b,dz=pitch*H*.3*sstep(.35,1,f);
+  const a=faceAt(xm,f,w).slope;
   return{x:xm,y:seaH(xm,w.z+u)+over,z:w.z+u+dz,a,f};
 }
 
@@ -574,6 +610,11 @@ const COLS=130,ROWS=230;
 function initGL(){
   prog.wave=program('vsWave','fsWave',['vp','eye','org','uW','uX','time','uHit']);
   prog.sky=program('vsSky','fsSky',['fw','rt','up','tanF','time']);
+  prog.lip=program('vsLip','fsWave',['vp','eye','uL','time']);
+  {const a=[],ix=[],C=44,R=26;for(let c=0;c<C;c++)for(let r=0;r<R;r++)a.push(c/(C-1),r/(R-1));
+   for(let c=0;c<C-1;c++)for(let r=0;r<R-1;r++){const q=c*R+r;ix.push(q,q+R,q+1,q+1,q+R,q+R+1)}
+   geo.lv=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,geo.lv);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(a),gl.STATIC_DRAW);
+   geo.li=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,geo.li);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(ix),gl.STATIC_DRAW);geo.ln=ix.length}
   const v=new Float32Array(ROWS*COLS*2);let i=0;
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){v[i++]=c/(COLS-1)*2-1;v[i++]=r/(ROWS-1)}
   geo.vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,geo.vb);gl.bufferData(gl.ARRAY_BUFFER,v,gl.STATIC_DRAW);
@@ -595,20 +636,24 @@ function resize(){
 addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,200));
 
 /* ---------- Cámara alta mirando al mar ---------- */
-const cam={e:[0,16,30],f:[0,-.3,-1],r:[1,0,0],u:[0,1,0],tx:0,ty:0,tz:0,dist:11.5,hgt:5.2,ready:false};
+const cam={e:[0,16,30],f:[0,-.3,-1],r:[1,0,0],u:[0,1,0],tx:0,ty:0,tz:0,dist:11.5,hgt:5.2,ready:false,tb:0};
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return[a[0]/l,a[1]/l,a[2]/l]};
 function updateCamera(dt){
   const pz=view.w<view.h?.86:1;let x,y,z,lookX=0,dist=11.5*pz,hgt=5.2;
-  if(G.mode==='ride'||(G.mode==='wipe'&&s)||(G.mode==='card'&&s)){const q=G.crashAt||rideP();x=q.x;y=q.y;z=q.z;lookX=2.5;dist=15*pz;hgt=6+q.y*.5+(s&&s.air?1.5:0)}
+  if(ride&&s&&(G.mode==='ride'||G.mode==='wipe'||G.mode==='card')){const q=G.crashAt||rideP();x=q.x;y=q.y;z=q.z;lookX=2.5;dist=15*pz;hgt=6+q.y*.5+(s&&s.air?1.5:0)}
   else if(G.crashAt){x=G.crashAt.x;y=G.crashAt.y;z=G.crashAt.z;dist=13*pz;hgt=6}
   else{x=P.x;y=P.y*.6;z=P.z;hgt=G.mode==='prompt'||G.mode==='popup'?6:5.2;dist=G.mode==='prompt'||G.mode==='popup'?13.5*pz:11.5*pz}
   const k=cam.ready?Math.min(1,dt*(G.mode==='ride'?5:3)):1;cam.ready=true;
   cam.tx+=(x+lookX-cam.tx)*k;cam.ty+=(y-cam.ty)*k;cam.tz+=(z-cam.tz)*k;cam.dist+=(dist-cam.dist)*k*.6;cam.hgt+=(hgt-cam.hgt)*k*.6;
   const sh=G.shake*G.shake*.5;
   cam.e=[cam.tx-lookX*.4+rnd(-sh,sh),cam.ty+cam.hgt+rnd(-sh,sh),cam.tz+cam.dist];
-  const look=[cam.tx,cam.ty+.2,cam.tz-cam.dist*.55];
+  const inT=G.mode==='ride'&&s&&!s.air&&(s.x-G.curlX)<T.tube*1.2;
+  cam.tb+=((inT?1:0)-cam.tb)*Math.min(1,dt*2.2);
+  let look=[cam.tx,cam.ty+.2,cam.tz-cam.dist*.55];
+  if(cam.tb>.01&&ride&&s){const q=rideP(),eT=[q.x+6.5,q.y+1.1,q.z+1],lT=[q.x-3,q.y+.9,q.z-.1];
+    cam.e=mix3(cam.e,eT,cam.tb);look=mix3(look,lT,cam.tb)}
   cam.f=norm([look[0]-cam.e[0],look[1]-cam.e[1],look[2]-cam.e[2]]);
   cam.r=norm(cross(cam.f,[0,1,0]));cam.u=cross(cam.r,cam.f);
 }
@@ -637,7 +682,11 @@ function drawWorld(t){
   const hw=swells.find(w=>w.hit&&G.t-w.hit.t<1.6);
   if(hw){const k=1-(G.t-hw.hit.t)/1.6;gl.uniform3f(u.uHit,hw.hit.x,hw.z+.5,k*k*hw.a*.55*(.5+hw.hit.p*.7))}else gl.uniform3f(u.uHit,0,-9999,0);
   gl.uniform4fv(u.uW,wArr);gl.uniform4fv(u.uX,xArr);gl.uniform1f(u.time,t%2000);
+  const vpM=viewProj();
   gl.drawElements(gl.TRIANGLES,geo.n,gl.UNSIGNED_SHORT,0);
+  gl.useProgram(prog.lip.p);gl.bindBuffer(gl.ARRAY_BUFFER,geo.lv);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,geo.li);
+  u=prog.lip.u;gl.uniformMatrix4fv(u.vp,false,vpM);gl.uniform3fv(u.eye,cam.e);gl.uniform1f(u.time,t%2000);
+  for(const w of list)if(w.b>.6&&w.a>1.5){gl.uniform4f(u.uL,w.cx,w.z,w.a,w.lf);gl.drawElements(gl.TRIANGLES,geo.ln,gl.UNSIGNED_SHORT,0)}
 }
 
 /* ---------- Surfista ---------- */
@@ -655,13 +704,15 @@ function flush(){                         // de atrás hacia adelante, cada part
   }
   Q=[];
 }
-function poseStand(o,f,side,n,lean,cr){
-  const up=norm([n[0]*.6,n[1]*.6+.4,n[2]*.6]),fF=add(o,f,.46),fB=add(o,f,-.4),ar=Math.abs(lean);
-  const hip=add(add(add(o,up,.84-.34*cr),side,lean*.26),f,.02),chest=add(add(hip,up,.45-.1*cr),side,lean*.22);
-  const head=add(add(chest,up,.27),f,.07);
-  const kF=add(add(mix3(fF,hip,.52),f,.1+.16*cr),side,.06),kB=add(add(mix3(fB,hip,.52),f,.04+.1*cr),side,-.06);
+function poseStand(o,f,side,n,lean,cr,p){
+  p=p||{};const fore=p.fore||0,up=norm([n[0]*.6,n[1]*.6+.4,n[2]*.6]),fF=add(o,f,.46),fB=add(o,f,-.4),ar=Math.abs(lean);
+  const hip=add(add(add(o,up,.84-.36*cr),side,lean*.3),f,.02+fore*.16),chest=add(add(add(hip,up,.45-.14*cr),side,lean*.28),f,fore*.12+.14*cr);
+  const head=add(add(add(chest,up,.27),f,.09),side,-lean*.1);
+  const kF=add(add(mix3(fF,hip,.52),f,.1+.16*cr),side,.06+lean*.08),kB=add(add(mix3(fB,hip,.52),f,.04+.1*cr),side,-.06+lean*.08);
   const shF=add(chest,f,.19),shB=add(chest,f,-.19);
-  const hF=add(add(add(shF,f,.5),up,-.14+.24*ar),side,lean*.3+.1),hB=add(add(add(shB,f,-.44),up,-.12+.28*ar),side,-lean*.2-.05);
+  let hF=add(add(add(shF,f,.48),up,-.14+.3*ar),side,lean*.32+.12),hB=add(add(add(shB,f,-.42),up,-.1+.36*ar+(p.armUp||0)*.5),side,-lean*.26-.05);
+  if(p.grab){hF=add(add(o,f,.25),side,.2);hB=mix3(hB,add(add(chest,up,.1),f,-.2),.5)}    // en el aire agarra el canto
+  if(p.wall)hB=add(add(add(shB,f,-.22),side,.62),up,.06);                               // en el tubo arrastra la mano en la pared
   return{fF,fB,kF,kB,hip,chest,head,shF,shB,eF:add(mix3(shF,hF,.5),up,-.08),eB:add(mix3(shB,hB,.5),up,-.08),hF,hB};
 }
 function poseLie(o,f,side,n,t,lift,aL,aR,vel){
@@ -715,13 +766,15 @@ function drawSurfer(t){
     if(c.t<1.5)drawBody(poseStand(o,f,side,n,.5,1));
     return;
   }
-  if(G.mode==='ride'||(G.mode==='card'&&s)){
+  if(ride&&s&&(G.mode==='ride'||G.mode==='card')){
     const q=rideP(),a=s.air?.25:q.a,fr=frameOf(s.th+s.spinA,a),o=[q.x,q.y+.1,q.z];
+    const pitch=s.air?clamp(s.vy/900,-.3,.45):clamp(-s.comp*.14-Math.max(0,-input.avg)*.16,-.28,.16);
+    const f=norm(add(fr.f,fr.n,-pitch));
     drawTrail(t);
-    drawBoard(o,fr.f,fr.side,fr.n,s.lean);
-    ctx.globalAlpha=G.inTube?.85:1;
-    const lean=s.lean*.9;drawBody(poseStand(o,fr.f,fr.side,fr.n,lean,clamp(s.crouch+(G.inTube?.45:0),0,1.1)));
-    ctx.globalAlpha=1;
+    drawBoard(o,f,fr.side,fr.n,s.lean);
+    const wob=(s.wob||0)*Math.sin(t*16)*.25;
+    drawBody(poseStand(o,f,fr.side,fr.n,s.lean*.95+wob,clamp(s.crouch+s.comp*.8+(G.inTube?.5:0)+(s.air?.35:0),0,1.15),
+      {fore:input.avg*.7-Math.abs(input.pivot)*.8,armUp:Math.abs(input.pivot),grab:s.air&&Math.abs(s.spinV)<2,wall:G.inTube}));
     return;
   }
   const f=norm([Math.sin(P.h),0,-Math.cos(P.h)]),o=[P.x,P.y+.1,P.z],side=norm(cross(f,[0,1,0])),n=[0,1,0];
@@ -742,13 +795,13 @@ function drawPuffs(t){                    // la masa de espuma donde rompe la ol
     if(w.b<.05||Math.abs(w.z-cam.e[2])>150)continue;
     const list=[];
     for(let i=0;i<30;i++){
-      const u=((i*37)%10)/10,x=w.cx+1.5-i*1.9+Math.sin(t*2+i)*.6;
+      const u=((i*37)%10)/10,x=w.cx-2.5-i*1.9+Math.sin(t*2+i)*.6;
       if(Math.abs(x-cam.e[0])>55)continue;
       const z=w.z+w.lf*(.15+u)+Math.sin(t*1.4+i*2)*.5,y=Math.max(.2,w.a*env(x,w)*prof(z-w.z,w.lf)*.75)+.3+.3*Math.sin(t*3+i);
       const q=project([x,y,z]);if(q)list.push({q,sz:(1.9+u*1.5)*(i<7?1.5:1)*w.b})
     }
     list.sort((a,b)=>b.q.z-a.q.z);
-    ctx.globalAlpha=.8;for(const p of list){const r=p.sz*p.q.k;ctx.drawImage(puff,p.q.x-r,p.q.y-r,r*2,r*2)}
+    ctx.globalAlpha=.7;for(const p of list){const r=p.sz*p.q.k;ctx.drawImage(puff,p.q.x-r,p.q.y-r,r*2,r*2)}
     ctx.globalAlpha=.42;
     for(let i=0;i<10;i++){                 // viento en el labio, delante de la rompiente
       const ph=(t*.6+i*.13)%1,x=w.cx+2+i*2.6,e=w.a*env(x,w),q=project([x,e+.2+ph*.9,w.z+w.lf*.1-ph*2]);
