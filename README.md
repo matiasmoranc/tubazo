@@ -10,6 +10,12 @@ Jugalo en https://matiasmoranc.github.io/tubazo/ o abrí `index.html` en el nave
 node servidor.js
 ```
 
+## Jugar con amigos
+
+Tocá **Crear playa** y pasales el código de 4 letras, o el enlace `https://matiasmoranc.github.io/tubazo/?playa=CODIGO`. Tus amigos lo escriben y tocan **Unirme**. Comparten las olas, se ven en el agua y, si chocan fuerte, se caen los dos.
+
+La conexión es directa entre los teléfonos: PeerJS, un servicio público y gratuito, solo los presenta. Quien crea la playa tiene que seguir conectado.
+
 ## Controles
 
 | Momento | Gesto | Qué hace |
@@ -29,7 +35,7 @@ En la PC: ← → remar o dirección, ↑ ↓ mirar, Espacio pasar por abajo, �
 
 ## Maniobras
 
-Cutback, rebote en la espuma, snap, floater, tubo, aéreos y giros en el aire.
+Romper el labio, derrapes de cola, cutback, rebote en la espuma, snap, floater, tubo, aéreos y giros en el aire.
 
 ## Archivos
 
